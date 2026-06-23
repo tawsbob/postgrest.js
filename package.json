@@ -6,7 +6,8 @@
   "scripts": {
     "parse": "tsx src/schema-dsl/cli.ts",
     "tokenize": "tsx src/schema-dsl/cli.ts --tokens",
-    "test": "node --import tsx --test 'src/schema-dsl/__tests__/**/*.test.ts'"
+    "generate": "tsx src/sql-generator/cli.ts",
+    "test": "node --import tsx --test 'src/**/__tests__/**/*.test.ts'"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",

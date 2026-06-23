@@ -1,0 +1,49 @@
+import type { TypeExpr } from '../../schema-dsl/ast.js';
+import { toSnakeCase } from './snake-case.js';
+
+const PRIMITIVE_TYPES = new Set([
+  'UUID',
+  'TEXT',
+  'INTEGER',
+  'SERIAL',
+  'BOOLEAN',
+  'JSONB',
+  'POINT',
+  'SMALLINT',
+  'VARCHAR',
+  'DECIMAL',
+  'TIMESTAMP',
+]);
+
+export function mapColumnType(type: TypeExpr, enumNames: Set<string>): string {
+  const baseType = mapBaseType(type, enumNames);
+  return type.array ? `${baseType}[]` : baseType;
+}
+
+function mapBaseType(type: TypeExpr, enumNames: Set<string>): string {
+  const { name } = type;
+
+  if (enumNames.has(name)) {
+    return toSnakeCase(name);
+  }
+
+  if (name === 'TIMESTAMP') {
+    return 'TIMESTAMP WITH TIME ZONE';
+  }
+
+  if (name === 'VARCHAR' && type.args?.length) {
+    const length = type.args.map((arg) => (arg as { value: number }).value).join(', ');
+    return `VARCHAR(${length})`;
+  }
+
+  if (name === 'DECIMAL' && type.args?.length) {
+    const args = type.args.map((arg) => (arg as { value: number }).value).join(', ');
+    return `DECIMAL(${args})`;
+  }
+
+  if (PRIMITIVE_TYPES.has(name)) {
+    return name;
+  }
+
+  return name;
+}
