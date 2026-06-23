@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: postgrest-schema-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgrest
+      POSTGRES_PASSWORD: postgrest
+      POSTGRES_DB: postgrest
+    volumes:
+      - ./docker_data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgrest -d postgrest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

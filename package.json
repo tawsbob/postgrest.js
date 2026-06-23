@@ -7,7 +7,11 @@
     "parse": "tsx src/schema-dsl/cli.ts",
     "tokenize": "tsx src/schema-dsl/cli.ts --tokens",
     "generate": "tsx src/sql-generator/cli.ts",
-    "test": "node --import tsx --test 'src/**/__tests__/**/*.test.ts'"
+    "test": "node --import tsx --test 'src/**/__tests__/**/*.test.ts'",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f postgres",
+    "docker:reset": "docker compose down -v && rm -rf docker_data/postgres && docker compose up -d"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
