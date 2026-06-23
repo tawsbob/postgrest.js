@@ -1,0 +1,35 @@
+import { describe, it } from 'node:test';
+import { expectParseError, wrapModels } from './helpers.js';
+
+describe('Parser — errors', () => {
+  it('throws when field is missing colon', () => {
+    expectParseError(wrapModels('model User { id UUID }'), /expected ':'/);
+  });
+
+  it('throws when model is missing closing brace', () => {
+    expectParseError(wrapModels('model User { id: UUID'), /expected 'model'|expected '\}'/);
+  });
+
+  it('throws when schema starts with models instead of extensions', () => {
+    expectParseError('models {}\nenums {}\nextensions {}', /expected 'extensions'/);
+  });
+
+  it('throws when enum value is not an identifier', () => {
+    expectParseError('extensions {}\nenums { Enum { 123 } }\nmodels {}', /expected identifier/);
+  });
+
+  it('throws when call expression has unclosed paren', () => {
+    expectParseError(
+      wrapModels('model User { id: UUID @default(gen_random_uuid('),
+      /expected '\)'|expected value/,
+    );
+  });
+
+  it('throws when model name is missing', () => {
+    expectParseError(wrapModels('model { }'), /expected model name/);
+  });
+
+  it('throws when @ is not followed by attribute name', () => {
+    expectParseError(wrapModels('model User { id: UUID @('), /expected attribute name/);
+  });
+});
