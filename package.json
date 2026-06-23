@@ -7,6 +7,8 @@
     "parse": "tsx src/schema-dsl/cli.ts",
     "tokenize": "tsx src/schema-dsl/cli.ts --tokens",
     "generate": "tsx src/sql-generator/cli.ts",
+    "setup:env": "test -f .env || cp .env.example .env",
+    "db:ping": "tsx src/db/cli.ts",
     "test": "node --import tsx --test 'src/**/__tests__/**/*.test.ts'",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
@@ -17,5 +19,8 @@
     "@types/node": "^22.15.21",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "pg": "^8.22.0"
   }
 }
