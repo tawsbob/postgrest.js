@@ -8,9 +8,11 @@ import type { AppEnv } from '../types.js';
 const pool = new Pool({ connectionString: getDatabaseUrl() });
 export const db: DbClient = createDbClient(pool);
 
-export function createDbMiddleware(): MiddlewareHandler<AppEnv> {
+export function createDbMiddleware(options: { pool?: Pool } = {}): MiddlewareHandler<AppEnv> {
+  const client = options.pool ? createDbClient(options.pool) : db;
+
   return async (c, next) => {
-    c.set('db', db);
+    c.set('db', client);
     await next();
   };
 }

@@ -219,7 +219,7 @@ npm run generate:api          # write generated/app.ts, routes/, schemas/
 npm run db:bootstrap          # apply DDL + snapshot schema state
 npm run dev:api               # regenerate client + API and start server on :3000
 npm test                      # unit tests
-npm run test:integration      # Docker-backed DB client E2E tests
+npm run test:integration      # Docker + generate + DB client + ACL integration tests
 ```
 
 ---
@@ -392,15 +392,18 @@ Relation `include` (e.g. `findMany({ include: { profile: true } })`) is planned 
 
 ### Integration tests
 
-Docker-backed end-to-end tests reset the `public` schema, bootstrap from `app.schema`, and exercise all client operations:
+One command starts Docker Postgres, generates the client and API, and runs all integration tests (DB client + ACL):
 
 ```bash
-npm run docker:up
-npm run generate:client
 npm run test:integration
 ```
 
-See [`src/db/__tests__/db-client.integration.test.ts`](src/db/__tests__/db-client.integration.test.ts).
+This resets the `public` schema, bootstraps from `app.schema`, seeds test data, and exercises:
+
+- **DB client** — CRUD, filters, and error handling ([`src/db/__tests__/db-client.integration.test.ts`](src/db/__tests__/db-client.integration.test.ts))
+- **ACL over HTTP** — role checks, row-level filters, JWT auth, and open endpoints ([`src/api/__tests__/acl.integration.test.ts`](src/api/__tests__/acl.integration.test.ts))
+
+Tests run in-process via Hono `app.request()` against the exported `createApp()` factory from `generated/app.ts`.
 
 ---
 
@@ -753,6 +756,8 @@ With the sample `User` policies above:
 | No token (`PUBLIC`) | `403` | `403` | `403` |
 | JWT `role: USER`, `sub: <own-id>` | Returns own row only | Own row if `:id` matches | `403` (delete not in `allow`) |
 | JWT `role: ADMIN` | Returns all rows | Any row | Allowed |
+
+These scenarios are covered by `npm run test:integration` — see [`src/api/__tests__/acl.integration.test.ts`](src/api/__tests__/acl.integration.test.ts).
 
 ---
 

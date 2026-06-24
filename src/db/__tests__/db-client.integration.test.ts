@@ -1,58 +1,15 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { Pool, type PoolClient } from 'pg';
-import type { User } from '../../../generated/db-types.js';
+import { Pool } from 'pg';
 import { createDbClient } from '../../../generated/db.js';
-import { bootstrapDatabase } from '../bootstrap.js';
-import { getDatabaseUrl } from '../config.js';
 import { ForeignKeyConstraintError, UniqueConstraintError } from '../errors.js';
-import { resetPublicSchema } from '../reset-database.js';
-
-const schemaPath = join(process.cwd(), 'app.schema');
-const generatedClientPath = join(process.cwd(), 'generated/db.ts');
-const dockerUnavailableMessage =
-  'Database unreachable. Start Docker Postgres with: npm run docker:up';
-
-interface SeededUsers {
-  alice: User;
-  admin: User;
-  bob: User;
-  publicUser: User;
-}
-
-async function seedUsers(db: ReturnType<typeof createDbClient>): Promise<SeededUsers> {
-  const alice = await db.user.create({
-    email: 'a@b.com',
-    name: 'Alice',
-    balance: 0,
-  });
-
-  const admin = await db.user.create({
-    email: 'admin@b.com',
-    name: 'Admin',
-    balance: 100,
-    role: 'ADMIN',
-  });
-
-  const bob = await db.user.create({
-    email: 'bob@b.com',
-    name: 'Bob',
-    balance: 50,
-    isActive: false,
-  });
-
-  const publicUser = await db.user.create({
-    email: 'public@b.com',
-    name: 'Public',
-    balance: 0,
-    role: 'PUBLIC',
-  });
-
-  return { alice, admin, bob, publicUser };
-}
+import {
+  assertDockerPostgres,
+  assertGeneratedArtifacts,
+  resetBootstrapAndSeed,
+  type SeededUsers,
+} from '../../__tests__/helpers/integration.js';
 
 describe('db client integration (Docker)', { concurrency: 1 }, () => {
   let pool: Pool;
@@ -60,32 +17,10 @@ describe('db client integration (Docker)', { concurrency: 1 }, () => {
   let users: SeededUsers;
 
   before(async () => {
-    assert.ok(
-      existsSync(generatedClientPath),
-      'Generated client missing. Run: npm run generate:client',
-    );
+    assertGeneratedArtifacts();
 
-    pool = new Pool({
-      connectionString: getDatabaseUrl(),
-      connectionTimeoutMillis: 3000,
-    });
-
-    try {
-      await pool.query('SELECT 1');
-    } catch {
-      await pool.end().catch(() => undefined);
-      throw new Error(dockerUnavailableMessage);
-    }
-
-    await resetPublicSchema(pool);
-    await bootstrapDatabase(schemaPath, {
-      async withClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-        return fn(pool);
-      },
-    });
-
-    db = createDbClient(pool);
-    users = await seedUsers(db);
+    pool = await assertDockerPostgres();
+    ({ db, users } = await resetBootstrapAndSeed(pool));
   });
 
   after(async () => {

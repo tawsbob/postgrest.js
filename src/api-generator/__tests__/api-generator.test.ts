@@ -97,13 +97,13 @@ describe('PolicyGenerator', () => {
 });
 
 describe('AppGenerator', () => {
-  it('generates app entry with logger, prettyJSON, routes, and serve', () => {
+  it('generates app entry with createApp export and conditional serve', () => {
     const output = generateAppFile(schema);
 
     assert.match(output, /import \{ Hono \} from 'hono'/);
     assert.match(output, /import type \{ AppEnv \} from '\.\.\/src\/api\/types\.js'/);
-    assert.match(output, /const app = new Hono<AppEnv>\(\)/);
-    assert.match(output, /app\.use\(createAuthMiddleware\(\)\)/);
+    assert.match(output, /export function createApp\(options: CreateAppOptions = \{\}\): Hono<AppEnv>/);
+    assert.match(output, /app\.use\(createAuthMiddleware\(options\.authResolver \?\? createJwtResolver\(\)\)\)/);
     assert.match(output, /import \{ logger \} from 'hono\/logger'/);
     assert.match(output, /import \{ prettyJSON \} from 'hono\/pretty-json'/);
     assert.match(output, /import \{ serve \} from '@hono\/node-server'/);
@@ -111,7 +111,7 @@ describe('AppGenerator', () => {
     assert.match(output, /app\.use\(prettyJSON\(\)\)/);
     assert.match(output, /app\.route\('\/users', usersRouter\)/);
     assert.match(output, /app\.route\('\/product-orders', productOrdersRouter\)/);
-    assert.match(output, /const port = Number\(process\.env\.PORT \?\? 3000\)/);
-    assert.match(output, /serve\(\{ fetch: app\.fetch, port \}/);
+    assert.match(output, /if \(isMain\)/);
+    assert.match(output, /serve\(\{ fetch: createApp\(\)\.fetch, port \}/);
   });
 });
