@@ -1,5 +1,5 @@
 // Auto-generated model metadata. Do not edit manually.
-import type { ModelMetaSnapshot } from '../src/db/model-meta.js';
+import type { ModelMetaSnapshot } from 'postgrestjs/db/model-meta';
 
 export const userModelMeta = {
   "name": "User",

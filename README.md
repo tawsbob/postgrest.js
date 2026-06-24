@@ -191,28 +191,137 @@ models {
 
 ## Quick Start
 
+Install the CLI and scaffold a new project:
+
 ```bash
-# 1. Create your schema
-npx postgrestjs init
-# → creates app.schema
-
-# 2. Generate SQL and API
-npx postgrestjs generate
-# → outputs schema.sql
-# → outputs generated/ (routes, schemas, middleware)
-
-# 3. Apply to your database
-psql $DATABASE_URL -f schema.sql
-
-# 4. Start the server
-npx postgrestjs dev
-# → Hono server on http://localhost:3000
+npx postgrestjs init my-app
+cd my-app
+npm install
 ```
 
-### Local development (this repo)
+Edit `app.schema`, then generate code and start the API:
+
+```bash
+# Start PostgreSQL (PostGIS-enabled, matches .env defaults)
+docker compose up -d
+
+# Generate schema.sql + generated/ (db client, routes, policies, Zod schemas)
+npx postgrestjs generate
+
+# Apply DDL to the database and snapshot schema state
+npx postgrestjs db:bootstrap
+
+# Regenerate client + API and start the server
+npx postgrestjs dev
+# → http://localhost:3000
+```
+
+The `init` command creates everything you need to get running:
+
+| File / directory | Purpose |
+|------------------|---------|
+| `app.schema` | Starter schema (one `User` model) — edit this |
+| `.env` | `DATABASE_URL`, JWT settings |
+| `docker-compose.yml` | Local PostGIS PostgreSQL on `:5432` |
+| `tsconfig.json` | TypeScript config for `generated/` and `src/routes/` |
+| `package.json` | `postgrestjs` + runtime deps (`hono`, `pg`, `zod`, …) |
+| `src/routes/health.ts` | Example custom route mounted at `/health` |
+
+After `generate`, your project also contains:
+
+| Output | Purpose |
+|--------|---------|
+| `schema.sql` | Idempotent PostgreSQL DDL |
+| `generated/db*.ts` | Type-safe DB client |
+| `generated/app.ts` | Hono server entry point |
+| `generated/routes/*.ts` | CRUD routers per model |
+| `generated/policies.ts` | ACL metadata from `@policy` |
+| `generated/schemas/validation.ts` | Zod request validators |
+
+Generated code imports the runtime from the `postgrestjs` package (`postgrestjs/api/*`, `postgrestjs/db/*`). You do not copy framework source into your project.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | — (required) | PostgreSQL connection string |
+| `PORT` | `3000` | HTTP listen port |
+| `JWT_SECRET` | — | HMAC secret for the default Bearer JWT resolver |
+| `JWT_ROLE_CLAIM` | `role` | JWT claim mapped to `auth.role` |
+| `JWT_USER_ID_CLAIM` | `sub` | JWT claim mapped to `auth.user.id` |
+
+Set these in `.env` before running `db:bootstrap` or `dev`.
+
+---
+
+## CLI Reference
+
+The `postgrestjs` binary is the primary interface. Each command accepts an optional path to a schema file (defaults to `app.schema` in the current directory).
+
+### Project setup
+
+```bash
+postgrestjs init [dir]     # Scaffold a new project (default: current directory)
+```
+
+### Code generation
+
+```bash
+postgrestjs generate [schema]        # schema.sql + db client + API (all three)
+postgrestjs generate:sql [schema]    # SQL DDL to stdout
+postgrestjs generate:client [schema]   # generated/db*.ts only
+postgrestjs generate:api [schema]      # generated/app.ts, routes/, policies, schemas
+```
+
+Run `generate:client` before `generate:api` when using the split commands — routes depend on `generated/db.ts`.
+
+### Development server
+
+```bash
+postgrestjs dev [schema]   # generate:client + generate:api, then start generated/app.ts
+```
+
+Equivalent npm scripts in a project created by `init`:
+
+```bash
+npm run dev        # postgrestjs dev
+npm run generate   # postgrestjs generate
+```
+
+### Database commands
+
+```bash
+postgrestjs db:ping [schema]              # Test DATABASE_URL connection (SELECT 1)
+postgrestjs db:bootstrap [schema]         # Apply DDL from schema + write .schema-state snapshot
+postgrestjs db:diff [schema]              # Print pending schema changes (snapshot vs app.schema)
+postgrestjs db:diff --name add_users      # Write a migration file under migrations/
+postgrestjs db:migrate [schema]           # Apply pending migration files
+postgrestjs db:migrate:status [schema]    # Show snapshot + migration file status
+```
+
+`db:bootstrap` is the recommended first-time setup. Use `db:diff` / `db:migrate` when evolving an existing database.
+
+Alternatively, apply SQL manually:
+
+```bash
+psql $DATABASE_URL -f schema.sql
+```
+
+### Help
+
+```bash
+postgrestjs --help
+```
+
+---
+
+## Local development (this repo)
+
+Contributors working on the framework itself clone the repo and use npm scripts (which delegate to the same CLI via `tsx`):
 
 ```bash
 cp .env.example .env          # configure DATABASE_URL
+npm run build                 # compile src/ → dist/ (required for postgrestjs/* imports)
 npm run docker:up             # PostGIS-enabled PostgreSQL on :5432
 npm run generate              # write schema.sql from app.schema
 npm run generate:client       # write generated/db*.ts
@@ -232,7 +341,8 @@ A type-safe query layer generated from your schema AST. The API mirrors Prisma e
 ### Generate
 
 ```bash
-npm run generate:client
+npx postgrestjs generate:client
+# or: npm run generate:client   (inside a scaffolded project)
 ```
 
 Outputs:
@@ -363,7 +473,7 @@ PostgreSQL errors are mapped to typed exceptions:
 | `DatabaseError` | other | Generic wrapper with `code`, `detail`, `constraint` |
 
 ```typescript
-import { UniqueConstraintError } from './src/db/errors.js';
+import { UniqueConstraintError } from 'postgrestjs/db/errors';
 
 try {
   await db.user.create({ email: 'taken@b.com', name: 'X', balance: 0 });
@@ -376,17 +486,15 @@ try {
 
 ### Runtime architecture
 
-Generated code is a thin wrapper. The query engine lives in `src/db/`:
+Generated code is a thin wrapper. The query engine ships inside the `postgrestjs` package (`postgrestjs/db/*`). In this repository, the source lives under `src/db/`:
 
 ```
-src/db/
-├── query-builder.ts      # INSERT / SELECT / UPDATE / DELETE / COUNT
-├── where-translator.ts   # WhereInput → SQL + params
-├── model-client.ts       # createModelClient factory
-├── row-mapper.ts         # snake_case rows → camelCase + coercion
-├── type-generator.ts     # AST → TypeScript interfaces
-├── db-client-generator.ts
-└── errors.ts
+postgrestjs/dist/db/        # Published runtime (import as postgrestjs/db/*)
+├── query-builder.ts        # INSERT / SELECT / UPDATE / DELETE / COUNT
+├── where-translator.ts     # WhereInput → SQL + params
+├── model-client.ts         # createModelClient factory
+├── row-mapper.ts           # snake_case rows → camelCase + coercion
+└── errors.ts               # UniqueConstraintError, ForeignKeyConstraintError, …
 ```
 
 Relation `include` (e.g. `findMany({ include: { profile: true } })`) is planned for a future release.
@@ -415,10 +523,11 @@ A Hono-based HTTP layer generated from your schema AST. Each model gets a router
 ### Generate
 
 ```bash
-npm run generate:api
+npx postgrestjs generate:api
+# or: npm run generate:api
 ```
 
-Requires `npm run generate:client` first (routes call `createDbClient` from `generated/db.ts`).
+Requires `generate:client` first (routes call `createDbClient` from `generated/db.ts`). Use `npx postgrestjs generate` to run both.
 
 Outputs:
 
@@ -433,7 +542,8 @@ Outputs:
 ### Start the server
 
 ```bash
-npm run dev:api
+npx postgrestjs dev
+# or: npm run dev
 # → regenerates client + API, then starts http://localhost:3000
 ```
 
@@ -443,7 +553,7 @@ Or run the generated entry point directly after generation:
 npx tsx generated/app.ts
 ```
 
-Environment variables:
+Environment variables (also see [Quick Start](#quick-start)):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -472,7 +582,7 @@ Models with composite primary keys (`@@id(fields: [...])`) expose one path segme
 
 ### Custom routes
 
-Not every endpoint maps to a CRUD model. For auth flows, webhooks, health checks, or other app-specific handlers, add hand-written Hono routers under `src/routes/`. Running `npm run generate:api` discovers these files and wires them into `generated/app.ts` — same global middleware (`db`, `auth`, error handling) as schema-generated routes.
+Not every endpoint maps to a CRUD model. For auth flows, webhooks, health checks, or other app-specific handlers, add hand-written Hono routers under `src/routes/`. Running `postgrestjs generate:api` (or `postgrestjs dev`) discovers these files and wires them into `generated/app.ts` — same global middleware (`db`, `auth`, error handling) as schema-generated routes.
 
 **Convention**
 
@@ -481,7 +591,7 @@ Not every endpoint maps to a CRUD model. For auth flows, webhooks, health checks
 | Location | `src/routes/**/*.ts` |
 | Export | `export default router` where `router` is `Hono<AppEnv>` |
 | Mount path | File path relative to `src/routes/`, without extension |
-| Regenerate | `npm run generate:api` (or `npm run dev:api`) after adding or renaming files |
+| Regenerate | `postgrestjs generate:api` or `postgrestjs dev` after adding or renaming files |
 
 **Path mapping**
 
@@ -494,7 +604,7 @@ Not every endpoint maps to a CRUD model. For auth flows, webhooks, health checks
 
 ```typescript
 import { Hono } from 'hono';
-import type { AppEnv } from '../api/types.js';
+import type { AppEnv } from 'postgrestjs/api/types';
 
 const router = new Hono<AppEnv>();
 
@@ -503,7 +613,7 @@ router.get('/', (c) => c.json({ ok: true }));
 export default router;
 ```
 
-After `npm run generate:api`, `generated/app.ts` includes:
+After `postgrestjs generate:api`, `generated/app.ts` includes:
 
 ```typescript
 import healthRouter from '../src/routes/health.js';
@@ -635,36 +745,28 @@ app.route('/health', healthRouter);
 
 ### Runtime architecture
 
-Generated routes and schemas are thin wrappers. The HTTP runtime lives in `src/api/`:
+Generated routes and schemas are thin wrappers. The HTTP runtime ships inside the `postgrestjs` package (`postgrestjs/api/*`). In this repository, the source lives under `src/api/`:
 
 ```
-src/api/
-├── types.ts                  # Hono AppEnv (db + auth in context)
+postgrestjs/dist/api/       # Published runtime (import as postgrestjs/api/*)
+├── types.ts                # Hono AppEnv (db + auth in context)
 ├── auth/
-│   ├── types.ts              # AuthContext, AuthUser, AuthResolver
-│   ├── jwt-resolver.ts       # Default Bearer JWT resolver (HS256)
-│   ├── middleware.ts         # createAuthMiddleware(resolver?)
-│   ├── policy.ts             # assertPolicy, resolvePolicyWhere, mergeWhere
-│   ├── template.ts           # {{auth.*}} interpolation
-│   └── errors.ts             # UnauthorizedError, ForbiddenError
+│   ├── jwt-resolver.ts     # Default Bearer JWT resolver (HS256)
+│   ├── middleware.ts       # createAuthMiddleware(resolver?)
+│   ├── policy.ts           # assertPolicy, resolvePolicyWhere, mergeWhere
+│   └── ...
 ├── middleware/
-│   ├── db.ts                 # Pool + createDbClient + context middleware
-│   ├── validate.ts           # Zod validation wrappers
-│   └── errors.ts             # HTTP error mapping (401, 403, 409, …)
+│   ├── db.ts               # Pool + createDbClient + context middleware
+│   ├── validate.ts         # Zod validation wrappers
+│   └── errors.ts           # HTTP error mapping (401, 403, 409, …)
 └── utils/
-    └── route-naming.ts       # Model → kebab-case plural paths
+    └── route-naming.ts     # Model → kebab-case plural paths
 
-src/routes/                   # Hand-written custom Hono routers (auto-imported)
-└── health.ts                 # Example: GET /health
-
-src/api-generator/
-├── zod-schema-generator.ts   # AST → Zod schemas
-├── policy-generator.ts       # AST → generated/policies.ts
-├── route-generator.ts        # AST → Hono routers (+ policy guards)
-├── custom-route-scanner.ts   # src/routes/**/*.ts → mount entries
-├── app-generator.ts          # AST → app.ts entry point (+ custom routes)
-└── generate-api-cli.ts       # npm run generate:api
+your-project/src/routes/    # Hand-written custom Hono routers (auto-imported)
+└── health.ts               # Example: GET /health
 ```
+
+The generators live in this repo under `src/api-generator/` and are invoked by the CLI at build time.
 
 URL query-string filters for `findMany` (e.g. `?role=ADMIN`) are planned for a future release.
 
@@ -759,7 +861,7 @@ Set `JWT_SECRET` in `.env` when using the default resolver.
 Different systems resolve identity differently. Pass a custom `AuthResolver` to the middleware:
 
 ```typescript
-import { createAuthMiddleware } from './src/api/auth/middleware.js';
+import { createAuthMiddleware } from 'postgrestjs/api/auth/middleware';
 
 app.use(createAuthMiddleware(async (c) => {
   const role = c.req.header('X-Role');
@@ -800,7 +902,7 @@ Complex multi-clause SQL in `where` is not supported yet — keep policies to a 
 
 ### Generated policy metadata
 
-`npm run generate:api` emits `generated/policies.ts`:
+`postgrestjs generate:api` emits `generated/policies.ts`:
 
 ```typescript
 export const POLICIES: Record<string, NormalizedPolicy[]> = {
@@ -829,10 +931,16 @@ These scenarios are covered by `npm run test:integration` — see [`src/api/__te
 
 ## Project Structure
 
+After `postgrestjs init` and `postgrestjs generate`, a typical application looks like this:
+
 ```
-my-project/
+my-app/
 ├── app.schema              # Your single source of truth
 ├── schema.sql              # Generated PostgreSQL DDL
+├── .env                    # DATABASE_URL, JWT_* settings
+├── docker-compose.yml      # Local PostgreSQL (optional)
+├── tsconfig.json
+├── package.json            # postgrestjs + hono + pg + zod
 ├── generated/
 │   ├── db.ts               # createDbClient(pool) factory
 │   ├── db-types.ts         # Generated model + input interfaces
@@ -842,16 +950,32 @@ my-project/
 │   ├── routes/
 │   │   ├── users.ts
 │   │   ├── profiles.ts
-│   │   ├── orders.ts
 │   │   └── ...
 │   └── schemas/
 │       └── validation.ts   # Generated Zod schemas
-├── src/db/                 # DB client runtime (query builder, not generated)
-├── src/api/                # REST runtime (middleware, auth, validation, errors)
-├── src/routes/             # Hand-written custom Hono routers (auto-imported)
-│   └── health.ts           # Example: GET /health
-├── src/api-generator/      # AST → Hono routes + Zod schemas + policies
-└── package.json
+└── src/
+    └── routes/
+        └── health.ts       # Custom route → GET /health
+```
+
+Framework runtime (query builder, auth middleware, validation) is **not** copied into your project — it is imported from `node_modules/postgrestjs` at runtime. Only `generated/` and `src/routes/` contain project-specific code.
+
+### This repository (framework source)
+
+```
+postgrest.js/
+├── src/
+│   ├── schema-dsl/         # Lexer, parser, AST
+│   ├── sql-generator/      # DDL + migration planner
+│   ├── db/                 # Query builder + client runtime
+│   ├── api/                # Hono runtime (published as postgrestjs/api/*)
+│   ├── api-generator/      # AST → routes, Zod, policies, app
+│   ├── cli/                # init templates + command helpers
+│   └── cli.ts              # postgrestjs CLI entry point
+├── dist/                   # Compiled output (npm publish target)
+├── generated/              # Sample output from app.schema (this repo)
+├── app.schema              # Sample schema
+└── editors/                # VS Code extension + language server
 ```
 
 ---
@@ -872,6 +996,7 @@ my-project/
 
 ## Roadmap
 
+- [x] npm package + CLI (`postgrestjs init`, `generate`, `dev`, `db:*`)
 - [x] Hand-written lexer & recursive-descent parser
 - [x] SQL DDL generator (full regeneration)
 - [x] Type-safe database client generator (`createDbClient`, parameterized query builder)

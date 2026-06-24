@@ -18,9 +18,9 @@ export function interpolateTemplate(template: string, auth: AuthContext): string
   });
 }
 
-function resolveAuthPath(auth: AuthContext, path: string): unknown {
+function resolveAuthPath(root: Record<string, unknown>, path: string): unknown {
   const segments = path.split('.').filter(Boolean);
-  let current: unknown = auth;
+  let current: unknown = root;
 
   for (const segment of segments) {
     if (current === null || current === undefined || typeof current !== 'object') {

@@ -1,5 +1,5 @@
 import type { WhereInput } from '../../db/where-translator.js';
-import { POLICIES, type NormalizedPolicy, type PolicyOperation } from '../../../generated/policies.js';
+import { POLICIES, type NormalizedPolicy, type PolicyOperation } from 'generated/policies.js';
 import { ForbiddenError } from './errors.js';
 import { interpolateTemplate } from './template.js';
 import type { AuthContext } from './types.js';

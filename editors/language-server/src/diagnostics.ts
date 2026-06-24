@@ -1,4 +1,4 @@
-import { LexError, ParseError, parse, type Schema } from 'postgrest-schema-dsl/schema-dsl';
+import { LexError, ParseError, parse, type Schema } from 'postgrestjs/schema-dsl';
 import { Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver';
 
 export interface ParseResult {

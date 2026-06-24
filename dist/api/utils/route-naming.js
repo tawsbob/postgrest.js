@@ -1,0 +1,25 @@
+import { pluralize } from '../../db/utils/naming.js';
+function toKebabCase(value) {
+    return value.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+export function toRouteBasePath(modelName) {
+    const camel = modelName.charAt(0).toLowerCase() + modelName.slice(1);
+    return pluralize(toKebabCase(camel));
+}
+export function toRouteFileName(modelName) {
+    return `${toRouteBasePath(modelName)}.ts`;
+}
+function segmentToCamelCase(segment, capitalizeFirst) {
+    const kebabCamel = segment.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+    if (!capitalizeFirst) {
+        return kebabCamel;
+    }
+    return kebabCamel.charAt(0).toUpperCase() + kebabCamel.slice(1);
+}
+export function toRouteImportName(basePath) {
+    const segments = basePath.split('/');
+    const camel = segments
+        .map((segment, index) => segmentToCamelCase(segment, index > 0))
+        .join('');
+    return `${camel}Router`;
+}

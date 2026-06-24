@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import type { MiddlewareHandler } from 'hono';
-import { createDbClient } from '../../../generated/db.js';
-import type { DbClient } from '../../../generated/db.js';
+import { createDbClient } from 'generated/db.js';
+import type { DbClient } from 'generated/db.js';
 import { getDatabaseUrl } from '../../db/config.js';
 import type { AppEnv } from '../types.js';
 

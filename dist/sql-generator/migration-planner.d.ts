@@ -1,0 +1,15 @@
+import type { Model, Schema } from '../schema-dsl/ast.js';
+import type { Migration } from './migration-types.js';
+export declare class MigrationPlanner {
+    generateMigration(oldSchema: Schema, newSchema: Schema): Migration[];
+    private diffExtensions;
+    private diffEnums;
+    private diffModels;
+    private diffField;
+    private diffConstraints;
+    private diffIndexes;
+    private diffTriggers;
+    private triggerSignatures;
+    private indexSignatures;
+}
+export declare function getStoredFieldNames(model: Model, modelNames: Set<string>): string[];

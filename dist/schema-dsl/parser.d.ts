@@ -1,0 +1,49 @@
+import type { Attribute, Field, Model, Schema } from './ast.js';
+import { Token } from './tokens.js';
+export declare class ParseError extends Error {
+    readonly line: number;
+    readonly col: number;
+    readonly expected: string;
+    readonly found: Token;
+    constructor(expected: string, found: Token);
+}
+export declare class Parser {
+    private readonly tokens;
+    private index;
+    constructor(tokens: Token[]);
+    parseSchema(): Schema;
+    parseModel(): Model;
+    parseField(): Field;
+    parseAttribute(): Attribute;
+    private parseExtensionsSection;
+    private parseExtension;
+    private parseEnumsSection;
+    private parseEnum;
+    private parseModelsSection;
+    private parseModelBody;
+    private parseTypeExpr;
+    private parseFieldAttributes;
+    private parseAttributeInternal;
+    private parseDirective;
+    private parseAttributeArgs;
+    private parseValue;
+    private parseIdentOrCall;
+    private parseArrayLiteral;
+    private parseBlockLiteral;
+    private parseKeyValueList;
+    private parseValueList;
+    private parseIdentList;
+    private isKeyValueListStart;
+    private isListEnd;
+    private consumeTrailingComma;
+    private loc;
+    private current;
+    private previous;
+    private advance;
+    private match;
+    private check;
+    private peekType;
+    private expect;
+    private isAtEnd;
+    private eofToken;
+}

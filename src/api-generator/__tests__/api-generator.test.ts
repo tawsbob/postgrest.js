@@ -105,7 +105,8 @@ describe('AppGenerator', () => {
     const output = generateAppFile(schema, { customRoutesDir: missingCustomRoutesDir });
 
     assert.match(output, /import \{ Hono \} from 'hono'/);
-    assert.match(output, /import type \{ AppEnv \} from '\.\.\/src\/api\/types\.js'/);
+    assert.match(output, /import type \{ AppEnv \} from 'postgrestjs\/api\/types'/);
+    assert.match(output, /import \{ createAuthMiddleware \} from 'postgrestjs\/api\/auth\/middleware'/);
     assert.match(output, /export function createApp\(options: CreateAppOptions = \{\}\): Hono<AppEnv>/);
     assert.match(output, /app\.use\(createAuthMiddleware\(options\.authResolver \?\? createJwtResolver\(\)\)\)/);
     assert.match(output, /import \{ logger \} from 'hono\/logger'/);

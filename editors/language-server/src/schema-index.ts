@@ -1,4 +1,4 @@
-import type { Field, Model, Schema, SourceLocation, TypeExpr } from 'postgrest-schema-dsl/schema-dsl';
+import type { Field, Model, Schema, SourceLocation, TypeExpr } from 'postgrestjs/schema-dsl';
 import { Range } from 'vscode-languageserver';
 import { toRange } from './utils.js';
 

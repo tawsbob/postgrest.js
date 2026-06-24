@@ -1,28 +1,66 @@
 {
-  "name": "postgrest-schema-dsl",
+  "name": "postgrestjs",
   "version": "0.1.0",
-  "private": true,
+  "description": "Single-file backend framework for PostgreSQL and Node.js",
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tawsbob/postgrest.js.git"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "postgrestjs": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "workspaces": [
     "editors/vscode",
     "editors/language-server"
   ],
+  "imports": {
+    "generated/db.js": "./generated/db.js",
+    "generated/policies.js": "./generated/policies.js"
+  },
   "exports": {
-    "./schema-dsl": "./src/schema-dsl/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema-dsl": {
+      "types": "./dist/schema-dsl/index.d.ts",
+      "import": "./dist/schema-dsl/index.js"
+    },
+    "./api/*": {
+      "types": "./dist/api/*.d.ts",
+      "import": "./dist/api/*.js"
+    },
+    "./db/*": {
+      "types": "./dist/db/*.d.ts",
+      "import": "./dist/db/*.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "parse": "tsx src/schema-dsl/cli.ts",
     "tokenize": "tsx src/schema-dsl/cli.ts --tokens",
-    "generate": "tsx src/sql-generator/cli.ts",
-    "generate:client": "tsx src/db/generate-client-cli.ts",
-    "generate:api": "tsx src/api-generator/generate-api-cli.ts",
-    "dev:api": "npm run generate:client && npm run generate:api && tsx generated/app.ts",
+    "generate": "tsx src/cli.ts generate",
+    "generate:client": "tsx src/cli.ts generate:client",
+    "generate:api": "tsx src/cli.ts generate:api",
+    "dev:api": "tsx src/cli.ts dev",
     "setup:env": "test -f .env || cp .env.example .env",
-    "db:ping": "tsx src/db/cli.ts",
-    "db:bootstrap": "tsx src/db/bootstrap-cli.ts",
-    "db:diff": "tsx src/db/diff-cli.ts",
-    "db:migrate": "tsx src/db/migrate-cli.ts",
-    "db:migrate:status": "tsx src/db/migrate-cli.ts status",
+    "db:ping": "tsx src/cli.ts db:ping",
+    "db:bootstrap": "tsx src/cli.ts db:bootstrap",
+    "db:diff": "tsx src/cli.ts db:diff",
+    "db:migrate": "tsx src/cli.ts db:migrate",
+    "db:migrate:status": "tsx src/cli.ts db:migrate:status",
     "build:lsp": "npm run build --workspace=@postgrest/schema-dsl-language-server",
     "build:extension": "npm run vscode:prepublish --workspace=postgrest-schema-dsl-vscode && npm run package --workspace=postgrest-schema-dsl-vscode",
     "test": "node --import tsx --test $(find src editors/language-server -path '*/__tests__/*.test.ts' ! -name '*.integration.test.ts')",
@@ -32,16 +70,17 @@
     "docker:logs": "docker compose logs -f postgres",
     "docker:reset": "docker compose down -v && rm -rf docker_data/postgres && docker compose up -d"
   },
-  "devDependencies": {
-    "@types/node": "^22.15.21",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
-  },
   "dependencies": {
     "@hono/node-server": "^2.0.6",
     "@hono/zod-validator": "^0.8.0",
     "hono": "^4.12.27",
     "pg": "^8.22.0",
+    "tsx": "^4.19.4",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/pg": "^8.11.14",
+    "typescript": "^5.8.3"
   }
 }

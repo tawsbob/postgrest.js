@@ -8,7 +8,12 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "src",
-    "declaration": true
+    "declaration": true,
+    "baseUrl": ".",
+    "paths": {
+      "generated/db.js": ["generated/db.ts"],
+      "generated/policies.js": ["generated/policies.ts"]
+    }
   },
   "include": ["src/**/*", "generated/**/*"]
 }
