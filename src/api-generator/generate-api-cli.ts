@@ -4,6 +4,7 @@ import { parse } from '../schema-dsl/index.js';
 import { generateApiFiles } from './index.js';
 
 const DEFAULT_SCHEMA_PATH = path.resolve('app.schema');
+const DEFAULT_CUSTOM_ROUTES_DIR = path.resolve('src/routes');
 const OUTPUT_DIR = path.resolve('generated');
 const ROUTES_DIR = path.join(OUTPUT_DIR, 'routes');
 const SCHEMAS_DIR = path.join(OUTPUT_DIR, 'schemas');
@@ -12,7 +13,7 @@ async function main(): Promise<void> {
   const schemaPath = process.argv[2] ?? DEFAULT_SCHEMA_PATH;
   const source = await readFile(schemaPath, 'utf8');
   const schema = parse(source);
-  const files = generateApiFiles(schema);
+  const files = generateApiFiles(schema, { customRoutesDir: DEFAULT_CUSTOM_ROUTES_DIR });
 
   await mkdir(ROUTES_DIR, { recursive: true });
   await mkdir(SCHEMAS_DIR, { recursive: true });

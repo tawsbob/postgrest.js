@@ -1,7 +1,7 @@
 import type { Model, Schema } from '../schema-dsl/ast.js';
 import { getPrimaryKey } from '../sql-generator/utils/ast-helpers.js';
 import { getClientExportName } from '../db/type-generator.js';
-import { toRouteBasePath, toRouteFileName } from '../api/utils/route-naming.js';
+import { toRouteBasePath, toRouteFileName, toRouteImportName } from '../api/utils/route-naming.js';
 import { hasPolicies } from './utils/policy.js';
 
 export class RouteGenerator {
@@ -237,8 +237,4 @@ export function getRouteMountEntries(schema: Schema): { basePath: string; fileNa
     const importName = toRouteImportName(basePath);
     return { basePath, fileName, importName };
   });
-}
-
-function toRouteImportName(basePath: string): string {
-  return basePath.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase()) + 'Router';
 }

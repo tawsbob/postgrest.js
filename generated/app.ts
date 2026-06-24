@@ -11,6 +11,7 @@ import ordersRouter from './routes/orders.js';
 import logsRouter from './routes/logs.js';
 import productsRouter from './routes/products.js';
 import productOrdersRouter from './routes/product-orders.js';
+import healthRouter from '../src/routes/health.js';
 import { createAuthMiddleware } from '../src/api/auth/middleware.js';
 import { createJwtResolver } from '../src/api/auth/jwt-resolver.js';
 import type { AuthResolver } from '../src/api/auth/types.js';
@@ -37,6 +38,7 @@ export function createApp(options: CreateAppOptions = {}): Hono<AppEnv> {
   app.route('/logs', logsRouter);
   app.route('/products', productsRouter);
   app.route('/product-orders', productOrdersRouter);
+  app.route('/health', healthRouter);
 
   return app;
 }

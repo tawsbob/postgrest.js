@@ -1,5 +1,5 @@
 import type { Schema } from '../schema-dsl/ast.js';
-import { generateAppFile } from './app-generator.js';
+import { generateAppFile, type AppGeneratorOptions } from './app-generator.js';
 import { generatePoliciesFile } from './policy-generator.js';
 import { generateRouteFiles } from './route-generator.js';
 import { generateValidationSchemas } from './zod-schema-generator.js';
@@ -11,9 +11,17 @@ export interface GeneratedApiFiles {
   routes: Map<string, string>;
 }
 
-export function generateApiFiles(schema: Schema): GeneratedApiFiles {
+export interface GenerateApiFilesOptions {
+  customRoutesDir?: string;
+}
+
+export function generateApiFiles(schema: Schema, options?: GenerateApiFilesOptions): GeneratedApiFiles {
+  const appOptions: AppGeneratorOptions | undefined = options?.customRoutesDir
+    ? { customRoutesDir: options.customRoutesDir }
+    : undefined;
+
   return {
-    app: generateAppFile(schema),
+    app: generateAppFile(schema, appOptions),
     policies: generatePoliciesFile(schema),
     validation: generateValidationSchemas(schema),
     routes: generateRouteFiles(schema),

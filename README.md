@@ -21,6 +21,7 @@ Most backend frameworks force you to scatter your truth across migrations, ORM m
 - **Automatic SQL Generation** — idempotent DDL with snake_case naming conventions
 - **Type-safe Database Client** — Prisma-like query API over parameterized raw SQL (`pg` Pool, no ORM)
 - **Type-safe REST API** — Hono routes with generated Zod validation
+- **Custom routes** — Hand-written Hono routers in `src/routes/` auto-imported into the generated app
 - **Inline ACL** — Row-level and role-based access control via `@policy` directives, enforced at runtime in generated routes
 - **Validation Rules** — `@regex` and `@range` constraints that flow into generated Zod request validators (with custom error messages from the schema)
 - **Migration Ready** — Full regeneration today, diff-based migrations tomorrow
@@ -427,6 +428,7 @@ Outputs:
 | `generated/policies.ts` | Per-model ACL metadata derived from `@policy` attributes |
 | `generated/schemas/validation.ts` | Per-model Zod schemas: `{Model}CreateSchema`, `{Model}UpdateSchema`, `{Model}ParamSchema` |
 | `generated/routes/*.ts` | One Hono router per model with GET / POST / PUT / DELETE handlers |
+| `src/routes/*.ts` | *(hand-written)* Custom Hono routers auto-imported into `generated/app.ts` on each `generate:api` run |
 
 ### Start the server
 
@@ -467,6 +469,61 @@ Each model in `app.schema` maps to a kebab-case plural base path. Handlers deleg
 | `ProductOrder` | `/product-orders` | `/product-orders/:orderId/:productId` |
 
 Models with composite primary keys (`@@id(fields: [...])`) expose one path segment per key field.
+
+### Custom routes
+
+Not every endpoint maps to a CRUD model. For auth flows, webhooks, health checks, or other app-specific handlers, add hand-written Hono routers under `src/routes/`. Running `npm run generate:api` discovers these files and wires them into `generated/app.ts` — same global middleware (`db`, `auth`, error handling) as schema-generated routes.
+
+**Convention**
+
+| Rule | Example |
+|------|---------|
+| Location | `src/routes/**/*.ts` |
+| Export | `export default router` where `router` is `Hono<AppEnv>` |
+| Mount path | File path relative to `src/routes/`, without extension |
+| Regenerate | `npm run generate:api` (or `npm run dev:api`) after adding or renaming files |
+
+**Path mapping**
+
+| File | Mounted at |
+|------|------------|
+| `src/routes/health.ts` | `/health` |
+| `src/routes/webhooks/stripe.ts` | `/webhooks/stripe` |
+
+**Example** — `src/routes/health.ts`:
+
+```typescript
+import { Hono } from 'hono';
+import type { AppEnv } from '../api/types.js';
+
+const router = new Hono<AppEnv>();
+
+router.get('/', (c) => c.json({ ok: true }));
+
+export default router;
+```
+
+After `npm run generate:api`, `generated/app.ts` includes:
+
+```typescript
+import healthRouter from '../src/routes/health.js';
+// ...
+app.route('/health', healthRouter);
+```
+
+Custom routes are mounted **after** all schema-generated routers. Handlers can use the same request context as generated routes:
+
+```typescript
+router.get('/me', async (c) => {
+  const db = c.get('db');
+  const auth = c.get('auth');
+  // ...
+});
+```
+
+**Skipped files** — The scanner ignores `*.test.ts`, `*.d.ts`, and any file or directory whose name starts with `_`.
+
+**Do not edit** `generated/app.ts` manually for custom routes — add files under `src/routes/` and regenerate.
 
 ### Endpoints
 
@@ -509,6 +566,9 @@ Fields with `@default` or optional (`?`) types are optional on create. Update sc
 ### Example requests
 
 ```bash
+# Health check (custom route from src/routes/health.ts)
+curl http://localhost:3000/health
+
 # List users
 curl http://localhost:3000/users
 
@@ -569,6 +629,8 @@ app.onError(handleError);
 
 app.route('/users', usersRouter);
 // ... all generated routers
+app.route('/health', healthRouter);
+// ... all custom routers from src/routes/
 ```
 
 ### Runtime architecture
@@ -592,11 +654,15 @@ src/api/
 └── utils/
     └── route-naming.ts       # Model → kebab-case plural paths
 
+src/routes/                   # Hand-written custom Hono routers (auto-imported)
+└── health.ts                 # Example: GET /health
+
 src/api-generator/
 ├── zod-schema-generator.ts   # AST → Zod schemas
 ├── policy-generator.ts       # AST → generated/policies.ts
 ├── route-generator.ts        # AST → Hono routers (+ policy guards)
-├── app-generator.ts          # AST → app.ts entry point
+├── custom-route-scanner.ts   # src/routes/**/*.ts → mount entries
+├── app-generator.ts          # AST → app.ts entry point (+ custom routes)
 └── generate-api-cli.ts       # npm run generate:api
 ```
 
@@ -782,6 +848,8 @@ my-project/
 │       └── validation.ts   # Generated Zod schemas
 ├── src/db/                 # DB client runtime (query builder, not generated)
 ├── src/api/                # REST runtime (middleware, auth, validation, errors)
+├── src/routes/             # Hand-written custom Hono routers (auto-imported)
+│   └── health.ts           # Example: GET /health
 ├── src/api-generator/      # AST → Hono routes + Zod schemas + policies
 └── package.json
 ```
@@ -812,6 +880,7 @@ my-project/
 - [x] Static ACL middleware generation (`@policy` → `assertPolicy` in routes)
 - [x] Row-level policy injection (`WHERE` clause from `where:` templates)
 - [x] JWT authentication (default Bearer resolver, pluggable `AuthResolver`)
+- [x] Custom routes (`src/routes/` auto-imported into generated app)
 - [ ] Relation `include` in DB client
 - [ ] Type generation for frontend consumption
 - [ ] Tree-sitter grammar for editor support

@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { Hono } from 'hono';
 import { parse } from '../../schema-dsl/index.js';
+import type { AppEnv } from '../../api/types.js';
 import { generateAppFile } from '../app-generator.js';
 import { generatePoliciesFile } from '../policy-generator.js';
 import { generateRouteFiles, getRouteMountEntries } from '../route-generator.js';
@@ -12,6 +14,8 @@ import { generateValidationSchemas } from '../zod-schema-generator.js';
 
 const schemaSource = readFileSync(path.resolve('app.schema'), 'utf8');
 const schema = parse(schemaSource);
+const missingCustomRoutesDir = path.resolve('src/api-generator/__tests__/fixtures/missing-routes');
+const fixtureCustomRoutesDir = path.resolve('src/api-generator/__tests__/fixtures/custom-routes');
 
 describe('ZodSchemaGenerator', () => {
   it('generates create schemas with regex and range messages from app.schema', () => {
@@ -98,7 +102,7 @@ describe('PolicyGenerator', () => {
 
 describe('AppGenerator', () => {
   it('generates app entry with createApp export and conditional serve', () => {
-    const output = generateAppFile(schema);
+    const output = generateAppFile(schema, { customRoutesDir: missingCustomRoutesDir });
 
     assert.match(output, /import \{ Hono \} from 'hono'/);
     assert.match(output, /import type \{ AppEnv \} from '\.\.\/src\/api\/types\.js'/);
@@ -111,7 +115,32 @@ describe('AppGenerator', () => {
     assert.match(output, /app\.use\(prettyJSON\(\)\)/);
     assert.match(output, /app\.route\('\/users', usersRouter\)/);
     assert.match(output, /app\.route\('\/product-orders', productOrdersRouter\)/);
+    assert.doesNotMatch(output, /import healthRouter from/);
     assert.match(output, /if \(isMain\)/);
     assert.match(output, /serve\(\{ fetch: createApp\(\)\.fetch, port \}/);
+  });
+
+  it('auto-imports custom routes from src/routes', () => {
+    const output = generateAppFile(schema, { customRoutesDir: fixtureCustomRoutesDir });
+
+    assert.match(output, /import healthRouter from '\.\.\/src\/routes\/health\.js'/);
+    assert.match(output, /import webhooksStripeRouter from '\.\.\/src\/routes\/webhooks\/stripe\.js'/);
+    assert.match(output, /app\.route\('\/health', healthRouter\)/);
+    assert.match(output, /app\.route\('\/webhooks\/stripe', webhooksStripeRouter\)/);
+
+    const usersMountIndex = output.indexOf("app.route('/users', usersRouter)");
+    const healthMountIndex = output.indexOf("app.route('/health', healthRouter)");
+    assert.ok(usersMountIndex >= 0);
+    assert.ok(healthMountIndex > usersMountIndex);
+  });
+
+  it('fixture custom route responds when mounted on Hono', async () => {
+    const { default: healthRouter } = await import('./fixtures/custom-routes/health.js');
+    const app = new Hono<AppEnv>();
+    app.route('/health', healthRouter);
+
+    const response = await app.request('/health');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
   });
 });

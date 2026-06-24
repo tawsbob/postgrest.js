@@ -5,6 +5,9 @@
 - [x] Develop the key CLI commands for data migration.
 - [x] Develop the database client generator.
 - [] Test the database client generator and query builder.
-- [ ] develop the router builder.
+- [x] develop the router builder.
 - [ ] develop the routers query filters by url. 
-- [ ] add to policy a way to only allow to update entries that user are owner of.
+- [x] add to policy a way to only allow to update entries that user are owner of.
+- [ ] add swagger ui to the api.
+- [ ] add default authentication route.
+- [ ] add a way to the dev add custom routes.
