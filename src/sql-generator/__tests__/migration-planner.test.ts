@@ -120,4 +120,21 @@ model Profile { id: UUID @id userId: UUID }`),
       [{ kind: 'AddEnumValue', enumName: 'UserRole', value: 'PUBLIC' }],
     );
   });
+
+  it('detects added and dropped foreign keys', () => {
+    const oldSchema = parse(
+      wrapModels(`model User { id: UUID @id }
+model Profile { id: UUID @id userId: UUID }`),
+    );
+    const newSchema = parse(
+      wrapModels(`model User { id: UUID @id profile: Profile? @relation(name: "UserProfile") }
+model Profile { id: UUID @id userId: UUID user: User @relation(name: "UserProfile", fields: [userId], references: [id]) }`),
+    );
+
+    const migrations = planner.generateMigration(oldSchema, newSchema);
+    assert.ok(migrations.some((migration) => migration.kind === 'AddConstraint'));
+
+    const reverse = planner.generateMigration(newSchema, oldSchema);
+    assert.ok(reverse.some((migration) => migration.kind === 'DropConstraint'));
+  });
 });

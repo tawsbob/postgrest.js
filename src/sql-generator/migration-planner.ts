@@ -1,6 +1,7 @@
 import type { Field, Model, Schema } from '../schema-dsl/ast.js';
 import type { Migration } from './migration-types.js';
 import {
+  collectForeignKeys,
   getDirectives,
   getEnumNames,
   getModelNames,
@@ -9,6 +10,7 @@ import {
   normalizeIndexDirective,
   serializeColumnType,
   serializeDefault,
+  serializeForeignKey,
 } from './utils/ast-helpers.js';
 
 export class MigrationPlanner {
@@ -16,6 +18,7 @@ export class MigrationPlanner {
     const migrations: Migration[] = [];
     migrations.push(...this.diffEnums(oldSchema, newSchema));
     migrations.push(...this.diffModels(oldSchema, newSchema));
+    migrations.push(...this.diffConstraints(oldSchema, newSchema));
     migrations.push(...this.diffIndexes(oldSchema, newSchema));
     return migrations;
   }
@@ -141,6 +144,40 @@ export class MigrationPlanner {
         fieldName: oldField.name,
         change: { type: 'default', from: oldDefault, to: newDefault },
       });
+    }
+
+    return migrations;
+  }
+
+  private diffConstraints(oldSchema: Schema, newSchema: Schema): Migration[] {
+    const migrations: Migration[] = [];
+    const oldKeys = new Map(
+      collectForeignKeys(oldSchema).map((foreignKey) => [serializeForeignKey(foreignKey), foreignKey]),
+    );
+    const newKeys = new Map(
+      collectForeignKeys(newSchema).map((foreignKey) => [serializeForeignKey(foreignKey), foreignKey]),
+    );
+
+    for (const [signature, foreignKey] of newKeys) {
+      if (!oldKeys.has(signature)) {
+        migrations.push({
+          kind: 'AddConstraint',
+          modelName: foreignKey.sourceModel,
+          constraintType: 'foreignKey',
+          details: signature,
+        });
+      }
+    }
+
+    for (const [signature, foreignKey] of oldKeys) {
+      if (!newKeys.has(signature)) {
+        migrations.push({
+          kind: 'DropConstraint',
+          modelName: foreignKey.sourceModel,
+          constraintType: 'foreignKey',
+          details: signature,
+        });
+      }
     }
 
     return migrations;

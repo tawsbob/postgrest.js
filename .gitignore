@@ -5,3 +5,4 @@ docker_data/
 .idea
 .vscode
 .history
+migrations/

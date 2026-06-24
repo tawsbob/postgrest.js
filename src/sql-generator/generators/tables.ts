@@ -1,4 +1,4 @@
-import type { Model, Schema } from '../../schema-dsl/ast.js';
+import type { Field, Model, Schema } from '../../schema-dsl/ast.js';
 import {
   collectValidationComments,
   getDefaultExpression,
@@ -19,7 +19,7 @@ export function generateTables(schema: Schema): string {
   return joinSection('Create tables', statements);
 }
 
-function generateTable(model: Model, enumNames: Set<string>, modelNames: Set<string>): string {
+export function generateTable(model: Model, enumNames: Set<string>, modelNames: Set<string>): string {
   const primaryKey = getPrimaryKey(model);
   const blocks: string[][] = [];
 
@@ -62,4 +62,40 @@ function generateTable(model: Model, enumNames: Set<string>, modelNames: Set<str
 
   const tableName = quoteIdentifier(toTableName(model.name));
   return formatCreateTable(tableName, blocks);
+}
+
+export function generateColumnDefinition(
+  field: Field,
+  model: Model,
+  enumNames: Set<string>,
+  modelNames: Set<string>,
+): string {
+  const primaryKey = getPrimaryKey(model);
+  const columnParts: string[] = [];
+  const columnName = toSnakeCase(field.name);
+
+  columnParts.push(columnName);
+  columnParts.push(mapColumnType(field.type, enumNames));
+
+  const isSingleFieldPrimaryKey =
+    primaryKey && !primaryKey.composite && primaryKey.fields.length === 1 && primaryKey.fields[0] === field.name;
+
+  if (isSingleFieldPrimaryKey) {
+    columnParts.push('PRIMARY KEY');
+  }
+
+  if (fieldHasAttribute(field, 'unique')) {
+    columnParts.push('UNIQUE');
+  }
+
+  const defaultExpression = getDefaultExpression(field, enumNames);
+  if (defaultExpression) {
+    columnParts.push(`DEFAULT ${defaultExpression}`);
+  }
+
+  if (!field.type.optional) {
+    columnParts.push('NOT NULL');
+  }
+
+  return columnParts.join(' ');
 }

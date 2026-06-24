@@ -260,6 +260,26 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export function serializeForeignKey(foreignKey: ForeignKeyInfo): string {
+  return JSON.stringify({
+    sourceTable: foreignKey.sourceTable,
+    sourceColumns: foreignKey.sourceColumns,
+    targetTable: foreignKey.targetTable,
+    targetColumns: foreignKey.targetColumns,
+    onDelete: foreignKey.onDelete,
+    onUpdate: foreignKey.onUpdate,
+  });
+}
+
+export function parseForeignKeySignature(signature: string): ForeignKeyInfo {
+  const parsed = JSON.parse(signature) as Omit<ForeignKeyInfo, 'sourceModel' | 'targetModel'>;
+  return {
+    sourceModel: '',
+    targetModel: '',
+    ...parsed,
+  };
+}
+
 export function normalizeIndexDirective(
   directive: Directive,
   model: Model,

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SqlGenerator } from '../sql-generator/sql-generator.js';
 import { DatabaseClient } from './client.js';
+import { writeSnapshot } from './schema-state.js';
 
 export function generateBootstrapSql(schemaPath: string): string {
   const source = readFileSync(schemaPath, 'utf8');
@@ -17,4 +18,6 @@ export async function bootstrapDatabase(
   await client.withClient(async (pgClient) => {
     await pgClient.query(sql);
   });
+
+  writeSnapshot(schemaPath);
 }

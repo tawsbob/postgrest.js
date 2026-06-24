@@ -1,14 +1,20 @@
-import type { Schema } from '../../schema-dsl/ast.js';
+import type { Enum, Schema } from '../../schema-dsl/ast.js';
 import { joinSection } from '../utils/format.js';
 import { escapeSqlString } from '../utils/value-formatter.js';
 import { toSnakeCase } from '../utils/snake-case.js';
 
-export function generateEnums(schema: Schema): string {
-  const statements = schema.enums.map((enumDef) => {
-    const typeName = toSnakeCase(enumDef.name);
-    const values = enumDef.values.map((value) => `'${escapeSqlString(value)}'`).join(', ');
-    return `CREATE TYPE ${typeName} AS ENUM (${values});`;
-  });
+export function generateEnum(enumDef: Enum): string {
+  const typeName = toSnakeCase(enumDef.name);
+  const values = enumDef.values.map((value) => `'${escapeSqlString(value)}'`).join(', ');
+  return `CREATE TYPE ${typeName} AS ENUM (${values});`;
+}
 
+export function generateAddEnumValue(enumName: string, value: string): string {
+  const typeName = toSnakeCase(enumName);
+  return `ALTER TYPE ${typeName} ADD VALUE '${escapeSqlString(value)}';`;
+}
+
+export function generateEnums(schema: Schema): string {
+  const statements = schema.enums.map((enumDef) => generateEnum(enumDef));
   return joinSection('Enums', statements);
 }
