@@ -1,0 +1,51 @@
+# Publishes the root `postgrestjs` package to npm when a GitHub release is published.
+#
+# One-time setup:
+# 1. Create an npm Automation access token at https://www.npmjs.com/settings/~/tokens
+# 2. Add it as a repository secret named NPM_TOKEN:
+#    GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#
+# Per release:
+# 1. Bump "version" in package.json and commit
+# 2. Create a GitHub release with tag vX.Y.Z (e.g. v0.2.0 for version 0.2.0)
+# 3. Publish the release — this workflow runs automatically
+
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify release tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag version ($VERSION) does not match package.json ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - run: npm run build
+      - run: npm test
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
