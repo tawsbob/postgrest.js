@@ -9,13 +9,16 @@ import ordersRouter from './routes/orders.js';
 import logsRouter from './routes/logs.js';
 import productsRouter from './routes/products.js';
 import productOrdersRouter from './routes/product-orders.js';
+import { createAuthMiddleware } from '../src/api/auth/middleware.js';
 import { createDbMiddleware } from '../src/api/middleware/db.js';
 import { handleError } from '../src/api/middleware/errors.js';
+import type { AppEnv } from '../src/api/types.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 app.use(logger());
 app.use(prettyJSON());
 app.use(createDbMiddleware());
+app.use(createAuthMiddleware());
 app.onError(handleError);
 
 app.route('/users', usersRouter);

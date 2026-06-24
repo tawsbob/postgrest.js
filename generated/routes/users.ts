@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../../src/api/types.js';
 import { validateJson, validateParam } from '../../src/api/middleware/validate.js';
 import { notFoundResponse } from '../../src/api/middleware/errors.js';
+import { assertPolicy, mergeWhere, resolvePolicyWhere } from '../../src/api/auth/policy.js';
 import {
   UserCreateSchema,
   UserUpdateSchema,
@@ -13,14 +14,20 @@ const router = new Hono<AppEnv>();
 
 router.get('/', async (c) => {
   const db = c.get('db');
-  const rows = await db.user.findMany();
+  const auth = c.get('auth');
+  const policy = assertPolicy('User', auth.role, 'select');
+  const policyWhere = resolvePolicyWhere(policy, auth);
+  const rows = await db.user.findMany({ where: policyWhere });
   return c.json(rows);
 });
 
 router.get('/:id', validateParam(UserParamSchema), async (c) => {
   const db = c.get('db');
+  const auth = c.get('auth');
+  const policy = assertPolicy('User', auth.role, 'select');
+  const policyWhere = resolvePolicyWhere(policy, auth);
   const params = c.req.valid('param');
-  const row = await db.user.findUnique({ id: params.id });
+  const row = await db.user.findUnique(mergeWhere({ id: params.id }, policyWhere));
   if (!row) {
     return notFoundResponse(c);
   }
@@ -29,6 +36,8 @@ router.get('/:id', validateParam(UserParamSchema), async (c) => {
 
 router.post('/', validateJson(UserCreateSchema), async (c) => {
   const db = c.get('db');
+  const auth = c.get('auth');
+  assertPolicy('User', auth.role, 'insert');
   const body = c.req.valid('json');
   const row = await db.user.create(body);
   return c.json(row, 201);
@@ -36,16 +45,22 @@ router.post('/', validateJson(UserCreateSchema), async (c) => {
 
 router.put('/:id', validateParam(UserParamSchema), validateJson(UserUpdateSchema), async (c) => {
   const db = c.get('db');
+  const auth = c.get('auth');
+  const policy = assertPolicy('User', auth.role, 'update');
+  const policyWhere = resolvePolicyWhere(policy, auth);
   const params = c.req.valid('param');
   const body = c.req.valid('json');
-  const row = await db.user.update({ where: { id: params.id }, data: body });
+  const row = await db.user.update({ where: mergeWhere({ id: params.id }, policyWhere), data: body });
   return c.json(row);
 });
 
 router.delete('/:id', validateParam(UserParamSchema), async (c) => {
   const db = c.get('db');
+  const auth = c.get('auth');
+  const policy = assertPolicy('User', auth.role, 'delete');
+  const policyWhere = resolvePolicyWhere(policy, auth);
   const params = c.req.valid('param');
-  const row = await db.user.delete({ id: params.id });
+  const row = await db.user.delete(mergeWhere({ id: params.id }, policyWhere));
   return c.json(row);
 });
 

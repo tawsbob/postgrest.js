@@ -1,4 +1,5 @@
 import type { ErrorHandler } from 'hono';
+import { ForbiddenError, UnauthorizedError } from '../auth/errors.js';
 import {
   DatabaseError,
   ForeignKeyConstraintError,
@@ -6,6 +7,14 @@ import {
 } from '../../db/errors.js';
 
 export const handleError: ErrorHandler = (error, c) => {
+  if (error instanceof UnauthorizedError) {
+    return c.json({ error: error.message }, 401);
+  }
+
+  if (error instanceof ForbiddenError) {
+    return c.json({ error: error.message }, 403);
+  }
+
   if (error instanceof UniqueConstraintError) {
     return c.json({ error: error.message }, 409);
   }

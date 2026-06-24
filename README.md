@@ -21,7 +21,7 @@ Most backend frameworks force you to scatter your truth across migrations, ORM m
 - **Automatic SQL Generation** — idempotent DDL with snake_case naming conventions
 - **Type-safe Database Client** — Prisma-like query API over parameterized raw SQL (`pg` Pool, no ORM)
 - **Type-safe REST API** — Hono routes with generated Zod validation
-- **Inline ACL** — Row-level and role-based access control defined next to your models (enforcement planned)
+- **Inline ACL** — Row-level and role-based access control via `@policy` directives, enforced at runtime in generated routes
 - **Validation Rules** — `@regex` and `@range` constraints that flow into generated Zod request validators (with custom error messages from the schema)
 - **Migration Ready** — Full regeneration today, diff-based migrations tomorrow
 
@@ -171,8 +171,8 @@ models {
            │                                          │          │
            ▼                                          ▼          ▼
     ┌─────────────┐                          ┌──────────────┐ ┌─────────────┐
-    │  schema.sql │                          │ generated/   │ │ Zod Schemas │
-    │ (PostgreSQL)│                          │ db.ts, types │ │             │
+    │  schema.sql │                          │ generated/   │ │ Hono Routes │
+    │ (PostgreSQL)│                          │ db.ts, types │ │ + policies  │
     └─────────────┘                          └──────────────┘ └─────────────┘
 ```
 
@@ -182,7 +182,8 @@ models {
 4. **Generate API** — The route generator emits Hono routers with:
    - Zod-validated request bodies and path params (driven by `@regex` and `@range`)
    - Full CRUD handlers backed by the generated DB client
-   - Role-based ACL middleware (driven by `@policy`) — planned
+   - Role-based ACL enforcement (driven by `@policy`) with row-level `WHERE` injection
+   - Pluggable authentication middleware (default: Bearer JWT)
 5. **Run** — `generated/app.ts` mounts all routers and starts a Node.js server. You get a validated REST API in seconds.
 
 ---
@@ -419,7 +420,8 @@ Outputs:
 
 | File | Purpose |
 |------|---------|
-| `generated/app.ts` | Hono app entry point — mounts routers, connects to PostgreSQL, starts the server |
+| `generated/app.ts` | Hono app entry point — mounts routers, auth + DB middleware, starts the server |
+| `generated/policies.ts` | Per-model ACL metadata derived from `@policy` attributes |
 | `generated/schemas/validation.ts` | Per-model Zod schemas: `{Model}CreateSchema`, `{Model}UpdateSchema`, `{Model}ParamSchema` |
 | `generated/routes/*.ts` | One Hono router per model with GET / POST / PUT / DELETE handlers |
 
@@ -442,8 +444,11 @@ Environment variables:
 |----------|---------|---------|
 | `DATABASE_URL` | — (required) | PostgreSQL connection string (loaded from `.env`) |
 | `PORT` | `3000` | HTTP listen port |
+| `JWT_SECRET` | — | HMAC secret for the default Bearer JWT resolver |
+| `JWT_ROLE_CLAIM` | `role` | JWT claim mapped to `auth.role` |
+| `JWT_USER_ID_CLAIM` | `sub` | JWT claim mapped to `auth.user.id` |
 
-The server uses `@hono/node-server` and connects via a shared `pg` `Pool`. The DB client is injected into every request through Hono context (`c.get('db')`).
+The server uses `@hono/node-server` and connects via a shared `pg` `Pool`. The DB client and auth context are injected into every request through Hono context (`c.get('db')`, `c.get('auth')`).
 
 ### Routes
 
@@ -462,15 +467,15 @@ Models with composite primary keys (`@@id(fields: [...])`) expose one path segme
 
 ### Endpoints
 
-Every router exposes the same CRUD shape:
+Every router exposes the same CRUD shape. Models with `@policy` attributes enforce role checks and row-level filters on every handler; models without policies behave as open endpoints.
 
 | Method | Path | Handler | Validation |
 |--------|------|---------|------------|
-| `GET` | `/` | `findMany()` — list all records | — |
-| `GET` | `/{pk}` | `findUnique(where)` — single record | Path params |
-| `POST` | `/` | `create(body)` | JSON body |
-| `PUT` | `/{pk}` | `update({ where, data })` | Path params + JSON body |
-| `DELETE` | `/{pk}` | `delete(where)` | Path params |
+| `GET` | `/` | `findMany({ where: policyWhere })` | — |
+| `GET` | `/{pk}` | `findUnique(mergeWhere(pk, policyWhere))` | Path params |
+| `POST` | `/` | `create(body)` — policy check only | JSON body |
+| `PUT` | `/{pk}` | `update({ where: mergeWhere(pk, policyWhere), data })` | Path params + JSON body |
+| `DELETE` | `/{pk}` | `delete(mergeWhere(pk, policyWhere))` | Path params |
 
 `POST` returns `201 Created`. Missing records on `GET` return `404`.
 
@@ -535,6 +540,8 @@ curl http://localhost:3000/product-orders/{orderId}/{productId}
 | Status | When |
 |--------|------|
 | `400` | Zod validation failure or foreign key violation |
+| `401` | Malformed or invalid JWT (when `Authorization: Bearer` is present) |
+| `403` | Role not allowed for the requested operation (`@policy` denial) |
 | `404` | Record not found on `GET`, or delete/update returned no rows |
 | `409` | Unique constraint violation |
 | `500` | Other database errors |
@@ -550,10 +557,11 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 app.use(logger());
 app.use(prettyJSON());
-app.use(createDbMiddleware());  // injects db from DATABASE_URL
+app.use(createDbMiddleware());     // injects db from DATABASE_URL
+app.use(createAuthMiddleware());   // injects auth (default: Bearer JWT)
 app.onError(handleError);
 
 app.route('/users', usersRouter);
@@ -566,22 +574,185 @@ Generated routes and schemas are thin wrappers. The HTTP runtime lives in `src/a
 
 ```
 src/api/
-├── types.ts                  # Hono AppEnv (db in context)
+├── types.ts                  # Hono AppEnv (db + auth in context)
+├── auth/
+│   ├── types.ts              # AuthContext, AuthUser, AuthResolver
+│   ├── jwt-resolver.ts       # Default Bearer JWT resolver (HS256)
+│   ├── middleware.ts         # createAuthMiddleware(resolver?)
+│   ├── policy.ts             # assertPolicy, resolvePolicyWhere, mergeWhere
+│   ├── template.ts           # {{auth.*}} interpolation
+│   └── errors.ts             # UnauthorizedError, ForbiddenError
 ├── middleware/
 │   ├── db.ts                 # Pool + createDbClient + context middleware
 │   ├── validate.ts           # Zod validation wrappers
-│   └── errors.ts             # HTTP error mapping
+│   └── errors.ts             # HTTP error mapping (401, 403, 409, …)
 └── utils/
     └── route-naming.ts       # Model → kebab-case plural paths
 
 src/api-generator/
 ├── zod-schema-generator.ts   # AST → Zod schemas
-├── route-generator.ts        # AST → Hono routers
+├── policy-generator.ts       # AST → generated/policies.ts
+├── route-generator.ts        # AST → Hono routers (+ policy guards)
 ├── app-generator.ts          # AST → app.ts entry point
 └── generate-api-cli.ts       # npm run generate:api
 ```
 
-URL query-string filters for `findMany` (e.g. `?role=ADMIN`) and ACL enforcement from `@policy` are planned for a future release.
+URL query-string filters for `findMany` (e.g. `?role=ADMIN`) are planned for a future release.
+
+---
+
+## Access Control (`@policy`)
+
+Define who can do what — and which rows they can touch — directly on your models. Policies are parsed from the schema, emitted to `generated/policies.ts`, and enforced in generated route handlers at runtime.
+
+### Defining policies
+
+Attach one or more `@policy` attributes to a model:
+
+```ts
+model User {
+  id:   UUID @id @default(gen_random_uuid())
+  role: UserRole @default(USER)
+  // ...
+
+  @policy(role: USER, allow: [select, insert, update], where: "id = {{auth.user.id}}")
+  @policy(role: ADMIN, allow: all)
+}
+```
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `role` | enum identifier | Role this policy applies to (must match a value in your schema enums, e.g. `UserRole`) |
+| `allow` | `all` or `[select, insert, update, delete]` | Operations permitted for this role |
+| `where` | string (optional) | Row-level filter applied on read/update/delete; supports `{{auth.*}}` templates |
+
+**Operations map to HTTP methods:**
+
+| HTTP | Policy operation |
+|------|------------------|
+| `GET` | `select` |
+| `POST` | `insert` |
+| `PUT` | `update` |
+| `DELETE` | `delete` |
+
+Models **without** `@policy` attributes are open — generated routes skip ACL checks entirely (e.g. `Log` in the sample schema).
+
+### How enforcement works
+
+For each model that has policies, generated routes call the policy guard before every DB operation:
+
+```typescript
+const auth = c.get('auth');
+const policy = assertPolicy('User', auth.role, 'select');
+const policyWhere = resolvePolicyWhere(policy, auth);
+const rows = await db.user.findMany({ where: policyWhere });
+```
+
+1. **`assertPolicy(model, role, operation)`** — Looks up the policy for the caller's role in `generated/policies.ts`. Throws `403 Forbidden` if the role has no policy or the operation is not in `allow`. Returns the matched policy.
+2. **`resolvePolicyWhere(policy, auth)`** — Interpolates `{{auth.user.id}}` (and other `{{auth.*}}` paths) from the request auth context, then parses the result into a `WhereInput` object.
+3. **`mergeWhere(routeWhere, policyWhere)`** — Combines route params (e.g. `:id`) with the policy filter via `AND` on read/update/delete.
+
+`POST` (insert) checks operation permission only — no `where` injection.
+
+### Auth context
+
+Every request gets an `auth` object on Hono context:
+
+```typescript
+type AuthContext = {
+  role: string;
+  user?: { id: string; [key: string]: unknown };
+};
+```
+
+**Unauthenticated requests** (no `Authorization` header) default to `{ role: 'PUBLIC' }`. Missing token is not a `401` — only a malformed or invalid token when a Bearer header is present.
+
+If the caller's role has no matching `@policy`, the runtime falls back to a `PUBLIC` role policy when one exists.
+
+### Default JWT authentication
+
+The generated app uses `createAuthMiddleware()` with a built-in Bearer JWT resolver (`src/api/auth/jwt-resolver.ts`):
+
+```bash
+curl http://localhost:3000/users \
+  -H 'Authorization: Bearer <jwt>'
+```
+
+The resolver expects HS256 tokens and reads:
+
+- `auth.role` ← claim named by `JWT_ROLE_CLAIM` (default: `role`)
+- `auth.user.id` ← claim named by `JWT_USER_ID_CLAIM` (default: `sub`)
+
+Set `JWT_SECRET` in `.env` when using the default resolver.
+
+### Pluggable auth
+
+Different systems resolve identity differently. Pass a custom `AuthResolver` to the middleware:
+
+```typescript
+import { createAuthMiddleware } from './src/api/auth/middleware.js';
+
+app.use(createAuthMiddleware(async (c) => {
+  const role = c.req.header('X-Role');
+  const userId = c.req.header('X-User-Id');
+
+  if (!role || !userId) {
+    return null; // → defaults to { role: 'PUBLIC' }
+  }
+
+  return {
+    role,
+    user: { id: userId },
+  };
+}));
+```
+
+`AuthResolver` signature: `(c: Context<AppEnv>) => Promise<AuthContext | null>`.
+
+Return `null` for anonymous callers; throw `UnauthorizedError` for invalid credentials.
+
+### Where templates
+
+Policy `where` clauses support `{{auth.*}}` placeholders resolved against the auth context:
+
+```ts
+where: "id = {{auth.user.id}}"
+```
+
+After interpolation, simple `field op value` forms are parsed into `WhereInput`:
+
+| Form | Example |
+|------|---------|
+| Equality | `id = {{auth.user.id}}` → `{ id: '…' }` |
+| Comparison | `balance >= 100` → `{ balance: { gte: 100 } }` |
+| Inequality | `role != ADMIN` → `{ NOT: { role: 'ADMIN' } }` |
+
+Complex multi-clause SQL in `where` is not supported yet — keep policies to a single condition for now.
+
+### Generated policy metadata
+
+`npm run generate:api` emits `generated/policies.ts`:
+
+```typescript
+export const POLICIES: Record<string, NormalizedPolicy[]> = {
+  User: [
+    { role: 'USER', operations: ['select', 'insert', 'update'], where: "id = {{auth.user.id}}" },
+    { role: 'ADMIN', operations: 'all' },
+  ],
+};
+```
+
+This file is consumed by `assertPolicy` at runtime — do not edit manually.
+
+### Example: scoped user access
+
+With the sample `User` policies above:
+
+| Caller | `GET /users` | `GET /users/:id` | `DELETE /users/:id` |
+|--------|--------------|------------------|---------------------|
+| No token (`PUBLIC`) | `403` | `403` | `403` |
+| JWT `role: USER`, `sub: <own-id>` | Returns own row only | Own row if `:id` matches | `403` (delete not in `allow`) |
+| JWT `role: ADMIN` | Returns all rows | Any row | Allowed |
 
 ---
 
@@ -596,6 +767,7 @@ my-project/
 │   ├── db-types.ts         # Generated model + input interfaces
 │   ├── db-model-meta.ts    # Runtime column metadata
 │   ├── app.ts              # Hono entry point (starts server on :3000)
+│   ├── policies.ts         # Generated ACL metadata from @policy
 │   ├── routes/
 │   │   ├── users.ts
 │   │   ├── profiles.ts
@@ -604,8 +776,8 @@ my-project/
 │   └── schemas/
 │       └── validation.ts   # Generated Zod schemas
 ├── src/db/                 # DB client runtime (query builder, not generated)
-├── src/api/                # REST runtime (middleware, validation, errors)
-├── src/api-generator/      # AST → Hono routes + Zod schemas
+├── src/api/                # REST runtime (middleware, auth, validation, errors)
+├── src/api-generator/      # AST → Hono routes + Zod schemas + policies
 └── package.json
 ```
 
@@ -632,13 +804,14 @@ my-project/
 - [x] Type-safe database client generator (`createDbClient`, parameterized query builder)
 - [x] Diff-based migration planner
 - [x] Hono route generator with Zod validation
-- [ ] Static ACL middleware generation
+- [x] Static ACL middleware generation (`@policy` → `assertPolicy` in routes)
+- [x] Row-level policy injection (`WHERE` clause from `where:` templates)
+- [x] JWT authentication (default Bearer resolver, pluggable `AuthResolver`)
 - [ ] Relation `include` in DB client
-- [ ] Row-level policy injection (`WHERE` clause generation)
 - [ ] Type generation for frontend consumption
 - [ ] Tree-sitter grammar for editor support
 - [x] VS Code extension with syntax highlighting and language server
-- [ ] JWT Authentication
+- [ ] URL query-string filters for `findMany` (e.g. `?role=ADMIN`)
 
 ---
 

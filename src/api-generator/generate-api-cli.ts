@@ -18,6 +18,7 @@ async function main(): Promise<void> {
   await mkdir(SCHEMAS_DIR, { recursive: true });
 
   await writeFile(path.join(OUTPUT_DIR, 'app.ts'), files.app, 'utf8');
+  await writeFile(path.join(OUTPUT_DIR, 'policies.ts'), files.policies, 'utf8');
   await writeFile(path.join(SCHEMAS_DIR, 'validation.ts'), files.validation, 'utf8');
 
   for (const [fileName, content] of files.routes) {

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { parse } from '../../schema-dsl/index.js';
 import { generateAppFile } from '../app-generator.js';
+import { generatePoliciesFile } from '../policy-generator.js';
 import { generateRouteFiles, getRouteMountEntries } from '../route-generator.js';
 import { generateValidationSchemas } from '../zod-schema-generator.js';
 
@@ -62,6 +63,18 @@ describe('RouteGenerator', () => {
     assert.match(content!, /findUnique\(\{ orderId: params\.orderId, productId: params\.productId \}\)/);
   });
 
+  it('injects policy checks for models with @policy attributes', () => {
+    const routes = generateRouteFiles(schema);
+    const users = routes.get('users.ts');
+    const logs = routes.get('logs.ts');
+
+    assert.match(users!, /assertPolicy\('User', auth\.role, 'select'\)/);
+    assert.match(users!, /resolvePolicyWhere\(policy, auth\)/);
+    assert.match(users!, /mergeWhere\(\{ id: params\.id \}, policyWhere\)/);
+    assert.doesNotMatch(logs!, /assertPolicy/);
+    assert.doesNotMatch(logs!, /resolvePolicyWhere/);
+  });
+
   it('maps route mount entries for all models', () => {
     const mounts = getRouteMountEntries(schema);
 
@@ -72,11 +85,25 @@ describe('RouteGenerator', () => {
   });
 });
 
+describe('PolicyGenerator', () => {
+  it('generates policy metadata from app.schema', () => {
+    const output = generatePoliciesFile(schema);
+
+    assert.match(output, /export const POLICIES: Record<string, NormalizedPolicy\[\]> = \{/);
+    assert.match(output, /role: 'USER', operations: \['select', 'insert', 'update'\]/);
+    assert.match(output, /where: "id = \{\{auth\.user\.id\}\}"/);
+    assert.match(output, /role: 'ADMIN', operations: 'all'/);
+  });
+});
+
 describe('AppGenerator', () => {
   it('generates app entry with logger, prettyJSON, routes, and serve', () => {
     const output = generateAppFile(schema);
 
     assert.match(output, /import \{ Hono \} from 'hono'/);
+    assert.match(output, /import type \{ AppEnv \} from '\.\.\/src\/api\/types\.js'/);
+    assert.match(output, /const app = new Hono<AppEnv>\(\)/);
+    assert.match(output, /app\.use\(createAuthMiddleware\(\)\)/);
     assert.match(output, /import \{ logger \} from 'hono\/logger'/);
     assert.match(output, /import \{ prettyJSON \} from 'hono\/pretty-json'/);
     assert.match(output, /import \{ serve \} from '@hono\/node-server'/);
