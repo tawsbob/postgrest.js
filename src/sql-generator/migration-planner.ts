@@ -8,6 +8,7 @@ import {
   getStoredFields,
   isStoredField,
   normalizeIndexDirective,
+  normalizeTriggerDirective,
   serializeColumnType,
   serializeDefault,
   serializeForeignKey,
@@ -16,10 +17,32 @@ import {
 export class MigrationPlanner {
   generateMigration(oldSchema: Schema, newSchema: Schema): Migration[] {
     const migrations: Migration[] = [];
+    migrations.push(...this.diffExtensions(oldSchema, newSchema));
     migrations.push(...this.diffEnums(oldSchema, newSchema));
     migrations.push(...this.diffModels(oldSchema, newSchema));
     migrations.push(...this.diffConstraints(oldSchema, newSchema));
     migrations.push(...this.diffIndexes(oldSchema, newSchema));
+    migrations.push(...this.diffTriggers(oldSchema, newSchema));
+    return migrations;
+  }
+
+  private diffExtensions(oldSchema: Schema, newSchema: Schema): Migration[] {
+    const migrations: Migration[] = [];
+    const oldNames = new Set(oldSchema.extensions.map((extension) => extension.name));
+    const newNames = new Set(newSchema.extensions.map((extension) => extension.name));
+
+    for (const name of newNames) {
+      if (!oldNames.has(name)) {
+        migrations.push({ kind: 'CreateExtension', extensionName: name });
+      }
+    }
+
+    for (const name of oldNames) {
+      if (!newNames.has(name)) {
+        migrations.push({ kind: 'DropExtension', extensionName: name });
+      }
+    }
+
     return migrations;
   }
 
@@ -192,11 +215,9 @@ export class MigrationPlanner {
 
     for (const [modelName, newModel] of newModels) {
       const oldModel = oldModels.get(modelName);
-      if (!oldModel) {
-        continue;
-      }
-
-      const oldIndexes = this.indexSignatures(oldModel, oldModelNames);
+      const oldIndexes = oldModel
+        ? this.indexSignatures(oldModel, oldModelNames)
+        : new Set<string>();
       const newIndexes = this.indexSignatures(newModel, newModelNames);
 
       for (const signature of newIndexes) {
@@ -213,6 +234,40 @@ export class MigrationPlanner {
     }
 
     return migrations;
+  }
+
+  private diffTriggers(oldSchema: Schema, newSchema: Schema): Migration[] {
+    const migrations: Migration[] = [];
+    const oldModels = new Map(oldSchema.models.map((model) => [model.name, model]));
+    const newModels = new Map(newSchema.models.map((model) => [model.name, model]));
+
+    for (const [modelName, newModel] of newModels) {
+      const oldModel = oldModels.get(modelName);
+      const oldTriggers = oldModel ? this.triggerSignatures(oldModel) : new Set<string>();
+      const newTriggers = this.triggerSignatures(newModel);
+
+      for (const signature of newTriggers) {
+        if (!oldTriggers.has(signature)) {
+          migrations.push({ kind: 'CreateTrigger', modelName, signature });
+        }
+      }
+
+      for (const signature of oldTriggers) {
+        if (!newTriggers.has(signature)) {
+          migrations.push({ kind: 'DropTrigger', modelName, signature });
+        }
+      }
+    }
+
+    return migrations;
+  }
+
+  private triggerSignatures(model: Model): Set<string> {
+    return new Set(
+      getDirectives(model, 'trigger').map((directive) =>
+        JSON.stringify(normalizeTriggerDirective(directive)),
+      ),
+    );
   }
 
   private indexSignatures(model: Model, modelNames: Set<string>): Set<string> {

@@ -137,4 +137,99 @@ model Profile { id: UUID @id userId: UUID user: User @relation(name: "UserProfil
     const reverse = planner.generateMigration(newSchema, oldSchema);
     assert.ok(reverse.some((migration) => migration.kind === 'DropConstraint'));
   });
+
+  it('detects added and dropped extensions', () => {
+    const oldSchema = parse(`extensions { pgcrypto }\nenums {}\nmodels {}`);
+    const newSchema = parse(`extensions { pgcrypto postgis }\nenums {}\nmodels {}`);
+
+    const migrations = planner.generateMigration(oldSchema, newSchema);
+    assert.deepEqual(
+      migrations.filter((migration) => migration.kind === 'CreateExtension'),
+      [{ kind: 'CreateExtension', extensionName: 'postgis' }],
+    );
+
+    const reverse = planner.generateMigration(newSchema, oldSchema);
+    assert.deepEqual(
+      reverse.filter((migration) => migration.kind === 'DropExtension'),
+      [{ kind: 'DropExtension', extensionName: 'postgis' }],
+    );
+  });
+
+  it('detects added and dropped triggers', () => {
+    const oldSchema = parse(
+      wrapModels(`model User {
+        id: UUID @id
+      }`),
+    );
+    const newSchema = parse(
+      wrapModels(`model User {
+        id: UUID @id
+        @@trigger {
+          timing: BEFORE,
+          event: UPDATE,
+          execute: """
+            RETURN NEW;
+          """
+        }
+      }`),
+    );
+
+    const migrations = planner.generateMigration(oldSchema, newSchema);
+    assert.ok(migrations.some((migration) => migration.kind === 'CreateTrigger'));
+
+    const reverse = planner.generateMigration(newSchema, oldSchema);
+    assert.ok(reverse.some((migration) => migration.kind === 'DropTrigger'));
+  });
+
+  it('detects trigger body changes as drop and create', () => {
+    const oldSchema = parse(
+      wrapModels(`model User {
+        id: UUID @id
+        @@trigger {
+          timing: BEFORE,
+          event: UPDATE,
+          execute: """
+            RETURN OLD;
+          """
+        }
+      }`),
+    );
+    const newSchema = parse(
+      wrapModels(`model User {
+        id: UUID @id
+        @@trigger {
+          timing: BEFORE,
+          event: UPDATE,
+          execute: """
+            RETURN NEW;
+          """
+        }
+      }`),
+    );
+
+    const migrations = planner.generateMigration(oldSchema, newSchema);
+    assert.ok(migrations.some((migration) => migration.kind === 'DropTrigger'));
+    assert.ok(migrations.some((migration) => migration.kind === 'CreateTrigger'));
+  });
+
+  it('detects triggers on newly added models', () => {
+    const oldSchema = parse(wrapModels('model User { id: UUID @id }'));
+    const newSchema = parse(
+      wrapModels(`model User { id: UUID @id }
+model Audit {
+  id: UUID @id
+  @@trigger {
+    timing: AFTER,
+    event: INSERT,
+    execute: """
+      RETURN NEW;
+    """
+  }
+}`),
+    );
+
+    const migrations = planner.generateMigration(oldSchema, newSchema);
+    assert.ok(migrations.some((migration) => migration.kind === 'CreateTable' && migration.modelName === 'Audit'));
+    assert.ok(migrations.some((migration) => migration.kind === 'CreateTrigger' && migration.modelName === 'Audit'));
+  });
 });

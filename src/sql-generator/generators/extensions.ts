@@ -1,9 +1,15 @@
 import type { Schema } from '../../schema-dsl/ast.js';
 import { joinSection } from '../utils/format.js';
 
+export function generateCreateExtension(name: string): string {
+  return `CREATE EXTENSION IF NOT EXISTS "${name}" WITH SCHEMA public;`;
+}
+
+export function generateDropExtension(name: string): string {
+  return `DROP EXTENSION IF EXISTS "${name}";`;
+}
+
 export function generateExtensions(schema: Schema): string {
-  const statements = schema.extensions.map(
-    (extension) => `CREATE EXTENSION IF NOT EXISTS "${extension.name}" WITH SCHEMA public;`,
-  );
+  const statements = schema.extensions.map((extension) => generateCreateExtension(extension.name));
   return joinSection('Extensions', statements);
 }

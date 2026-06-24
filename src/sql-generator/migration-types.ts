@@ -1,4 +1,6 @@
 export type Migration =
+  | CreateExtension
+  | DropExtension
   | CreateTable
   | DropTable
   | AddColumn
@@ -9,7 +11,9 @@ export type Migration =
   | CreateEnum
   | AddEnumValue
   | AddConstraint
-  | DropConstraint;
+  | DropConstraint
+  | CreateTrigger
+  | DropTrigger;
 
 export interface CreateTable {
   kind: 'CreateTable';
@@ -78,4 +82,26 @@ export interface DropConstraint {
   modelName: string;
   constraintType: 'foreignKey' | 'primaryKey' | 'unique';
   details: string;
+}
+
+export interface CreateExtension {
+  kind: 'CreateExtension';
+  extensionName: string;
+}
+
+export interface DropExtension {
+  kind: 'DropExtension';
+  extensionName: string;
+}
+
+export interface CreateTrigger {
+  kind: 'CreateTrigger';
+  modelName: string;
+  signature: string;
+}
+
+export interface DropTrigger {
+  kind: 'DropTrigger';
+  modelName: string;
+  signature: string;
 }

@@ -310,3 +310,52 @@ export function normalizeIndexDirective(
     type: typePair?.value.kind === 'Identifier' ? (typePair.value as Identifier).name : undefined,
   };
 }
+
+export interface NormalizedTrigger {
+  timing: string;
+  event: string;
+  level: string;
+  execute: string;
+}
+
+export interface TriggerNames {
+  functionName: string;
+  triggerName: string;
+}
+
+export function normalizeTriggerDirective(directive: Directive): NormalizedTrigger {
+  const args = assertKeyValueArgs(directive.args);
+  const timing = getKvPair(args, 'timing').value;
+  const event = getKvPair(args, 'event').value;
+  const execute = getKvPair(args, 'execute').value;
+  const levelPair = getOptionalKvPair(args, 'level');
+
+  if (timing.kind !== 'Identifier' || event.kind !== 'Identifier') {
+    throw new Error('Trigger timing and event must be identifiers');
+  }
+
+  if (execute.kind !== 'TripleStringLiteral') {
+    throw new Error('Trigger execute must be a triple-quoted string');
+  }
+
+  const levelValue =
+    levelPair?.value.kind === 'Identifier' ? levelPair.value.name.toUpperCase() : 'ROW';
+
+  return {
+    timing: timing.name.toUpperCase(),
+    event: event.name.toUpperCase(),
+    level: levelValue,
+    execute: execute.value.trim(),
+  };
+}
+
+export function resolveTriggerNames(model: Model, timing: string, event: string): TriggerNames {
+  const timingValue = timing.toLowerCase();
+  const eventValue = event.toLowerCase();
+  const baseName = `${toTableName(model.name)}_${timingValue}_${eventValue}`;
+
+  return {
+    functionName: `${baseName}_trigger_func`,
+    triggerName: `${baseName}_trigger`,
+  };
+}

@@ -134,6 +134,90 @@ model Legacy { id: UUID @id }`),
     assert.ok(dropColumnIndex > addColumnIndex);
     assert.ok(dropTableIndex > dropColumnIndex);
   });
+
+  it('generates extension creation and removal', () => {
+    const sql = diffSql(
+      `extensions { pgcrypto }\nenums {}\nmodels {}`,
+      `extensions { pgcrypto postgis }\nenums {}\nmodels {}`,
+    );
+
+    assert.match(sql, /CREATE EXTENSION IF NOT EXISTS "postgis"/);
+
+    const reverse = diffSql(
+      `extensions { pgcrypto postgis }\nenums {}\nmodels {}`,
+      `extensions { pgcrypto }\nenums {}\nmodels {}`,
+    );
+
+    assert.match(reverse, /DROP EXTENSION IF EXISTS "postgis"/);
+  });
+
+  it('generates trigger creation and removal', () => {
+    const sql = diffSql(
+      wrapModels(`model User {
+        id: UUID @id
+      }`),
+      wrapModels(`model User {
+        id: UUID @id
+        @@trigger {
+          timing: BEFORE,
+          event: UPDATE,
+          execute: """
+            RETURN NEW;
+          """
+        }
+      }`),
+    );
+
+    assert.match(sql, /CREATE OR REPLACE FUNCTION user_before_update_trigger_func/);
+    assert.match(sql, /CREATE TRIGGER user_before_update_trigger/);
+
+    const reverse = diffSql(
+      wrapModels(`model User {
+        id: UUID @id
+        @@trigger {
+          timing: BEFORE,
+          event: UPDATE,
+          execute: """
+            RETURN NEW;
+          """
+        }
+      }`),
+      wrapModels(`model User {
+        id: UUID @id
+      }`),
+    );
+
+    assert.match(reverse, /DROP TRIGGER IF EXISTS user_before_update_trigger ON "user"/);
+    assert.match(reverse, /DROP FUNCTION IF EXISTS user_before_update_trigger_func/);
+  });
+
+  it('orders extensions before tables and triggers before table drops', () => {
+    const sql = diffSql(
+      `extensions { pgcrypto }\nenums {}\nmodels { model Legacy { id: UUID @id } }`,
+      `extensions { pgcrypto postgis }\nenums {}\nmodels {
+        model User {
+          id: UUID @id
+          @@trigger {
+            timing: BEFORE,
+            event: UPDATE,
+            execute: """
+              RETURN NEW;
+            """
+          }
+        }
+      }`,
+    );
+
+    const createExtensionIndex = sql.indexOf('CREATE EXTENSION IF NOT EXISTS "postgis"');
+    const createTableIndex = sql.indexOf('CREATE TABLE "user"');
+    const createTriggerIndex = sql.indexOf('CREATE TRIGGER user_before_update_trigger');
+    const dropTableIndex = sql.indexOf('DROP TABLE IF EXISTS legacy');
+
+    assert.ok(createExtensionIndex >= 0);
+    assert.ok(createTableIndex > createExtensionIndex);
+    assert.ok(createTriggerIndex > createTableIndex);
+    assert.ok(dropTableIndex > createTriggerIndex);
+  });
 });
 
 describe('schema snapshot and diff integration', () => {

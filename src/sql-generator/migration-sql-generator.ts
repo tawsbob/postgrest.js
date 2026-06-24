@@ -1,5 +1,6 @@
 import type { Field, Model, Schema } from '../schema-dsl/ast.js';
 import { generateAddEnumValue, generateEnum } from './generators/enums.js';
+import { generateCreateExtension, generateDropExtension } from './generators/extensions.js';
 import { generateForeignKey } from './generators/foreign-keys.js';
 import {
   generateCreateIndex,
@@ -7,6 +8,11 @@ import {
   type NormalizedIndex,
 } from './generators/indexes.js';
 import { generateColumnDefinition, generateTable } from './generators/tables.js';
+import {
+  generateCreateTrigger,
+  generateDropTrigger,
+  type NormalizedTrigger,
+} from './generators/triggers.js';
 import type { Migration } from './migration-types.js';
 import {
   getDirectives,
@@ -15,11 +21,13 @@ import {
   getModelNames,
   getStoredFields,
   normalizeIndexDirective,
+  normalizeTriggerDirective,
   parseForeignKeySignature,
 } from './utils/ast-helpers.js';
 import { quoteIdentifier, toSnakeCase, toTableName } from './utils/snake-case.js';
 
 const MIGRATION_ORDER: Record<Migration['kind'], number> = {
+  CreateExtension: 0,
   CreateEnum: 1,
   AddEnumValue: 2,
   CreateTable: 3,
@@ -30,7 +38,10 @@ const MIGRATION_ORDER: Record<Migration['kind'], number> = {
   DropConstraint: 8,
   DropIndex: 9,
   CreateIndex: 10,
-  DropTable: 11,
+  CreateTrigger: 11,
+  DropTrigger: 12,
+  DropTable: 13,
+  DropExtension: 14,
 };
 
 export class MigrationSqlGenerator {
@@ -68,6 +79,10 @@ export class MigrationSqlGenerator {
     const { enumNames, modelNames, modelMap, enumMap } = context;
 
     switch (migration.kind) {
+      case 'CreateExtension':
+        return generateCreateExtension(migration.extensionName);
+      case 'DropExtension':
+        return generateDropExtension(migration.extensionName);
       case 'CreateEnum': {
         const enumDef = enumMap.get(migration.enumName);
         if (!enumDef) {
@@ -157,6 +172,22 @@ export class MigrationSqlGenerator {
         const constraintName = `${foreignKey.sourceTable}_${foreignKey.sourceColumns.join('_')}_fkey`;
         return `ALTER TABLE ${quoteIdentifier(foreignKey.sourceTable)} DROP CONSTRAINT ${constraintName};`;
       }
+      case 'CreateTrigger': {
+        const model = modelMap.get(migration.modelName);
+        if (!model) {
+          throw new Error(`Model "${migration.modelName}" not found in new schema`);
+        }
+        const normalized = this.findTriggerBySignature(model, migration.signature);
+        return generateCreateTrigger(model, normalized);
+      }
+      case 'DropTrigger': {
+        const model = modelMap.get(migration.modelName);
+        if (!model) {
+          throw new Error(`Model "${migration.modelName}" not found in new schema`);
+        }
+        const normalized = JSON.parse(migration.signature) as NormalizedTrigger;
+        return generateDropTrigger(model, normalized);
+      }
       default: {
         const exhaustive: never = migration;
         throw new Error(`Unsupported migration kind: ${(exhaustive as Migration).kind}`);
@@ -185,5 +216,16 @@ export class MigrationSqlGenerator {
     }
 
     throw new Error(`Index signature not found on model "${model.name}"`);
+  }
+
+  private findTriggerBySignature(model: Model, signature: string): NormalizedTrigger {
+    for (const directive of getDirectives(model, 'trigger')) {
+      const normalized = normalizeTriggerDirective(directive);
+      if (JSON.stringify(normalized) === signature) {
+        return normalized;
+      }
+    }
+
+    throw new Error(`Trigger signature not found on model "${model.name}"`);
   }
 }
