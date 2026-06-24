@@ -11,7 +11,7 @@ Most backend frameworks force you to scatter your truth across migrations, ORM m
 - **One file.** Schema, relations, triggers, indexes, and ACL in a single `.schema` file.
 - **Zero ORM.** We generate raw PostgreSQL and parameterized queries. No hidden query builders, no N+1 surprises.
 - **Hand-written parser.** A small, fast recursive-descent lexer/parser with zero parser-generator dependencies.
-- **Hono-based runtime.** Lightweight, edge-ready HTTP handlers generated from your policies.
+- **Hono-based runtime.** Lightweight HTTP handlers generated from your schema, with Zod validation on every write.
 
 ---
 
@@ -21,8 +21,8 @@ Most backend frameworks force you to scatter your truth across migrations, ORM m
 - **Automatic SQL Generation** — idempotent DDL with snake_case naming conventions
 - **Type-safe Database Client** — Prisma-like query API over parameterized raw SQL (`pg` Pool, no ORM)
 - **Type-safe REST API** — Hono routes with generated Zod validation
-- **Inline ACL** — Row-level and role-based access control defined next to your models
-- **Validation Rules** — `@regex` and `@range` constraints that flow into both SQL `CHECK` constraints and request validators
+- **Inline ACL** — Row-level and role-based access control defined next to your models (enforcement planned)
+- **Validation Rules** — `@regex` and `@range` constraints that flow into generated Zod request validators (with custom error messages from the schema)
 - **Migration Ready** — Full regeneration today, diff-based migrations tomorrow
 
 ---
@@ -180,10 +180,10 @@ models {
 2. **Generate SQL** — The DDL generator emits idempotent PostgreSQL: extensions, enums, tables, foreign keys, indexes, and triggers. All identifiers are automatically converted to `snake_case`.
 3. **Generate DB client** — The client generator emits TypeScript interfaces and a `createDbClient(pool)` factory with per-model CRUD methods backed by a runtime query builder. All SQL uses `$1`, `$2`, … placeholders — user input is never interpolated.
 4. **Generate API** — The route generator emits Hono routers with:
-   - Zod-validated request bodies (driven by `@regex` and `@range`)
-   - Role-based ACL middleware (driven by `@policy`)
-   - Parameterized raw SQL queries (no ORM, no surprises)
-5. **Run** — `app.ts` mounts all generated routers. You get a type-safe, policy-enforced REST API in seconds.
+   - Zod-validated request bodies and path params (driven by `@regex` and `@range`)
+   - Full CRUD handlers backed by the generated DB client
+   - Role-based ACL middleware (driven by `@policy`) — planned
+5. **Run** — `generated/app.ts` mounts all routers and starts a Node.js server. You get a validated REST API in seconds.
 
 ---
 
@@ -214,7 +214,9 @@ cp .env.example .env          # configure DATABASE_URL
 npm run docker:up             # PostGIS-enabled PostgreSQL on :5432
 npm run generate              # write schema.sql from app.schema
 npm run generate:client       # write generated/db*.ts
+npm run generate:api          # write generated/app.ts, routes/, schemas/
 npm run db:bootstrap          # apply DDL + snapshot schema state
+npm run dev:api               # regenerate client + API and start server on :3000
 npm test                      # unit tests
 npm run test:integration      # Docker-backed DB client E2E tests
 ```
@@ -401,6 +403,188 @@ See [`src/db/__tests__/db-client.integration.test.ts`](src/db/__tests__/db-clien
 
 ---
 
+## REST API
+
+A Hono-based HTTP layer generated from your schema AST. Each model gets a router with full CRUD endpoints. Request bodies and path parameters are validated with Zod schemas derived from field types and `@regex` / `@range` attributes — validation error messages come directly from the `message` parameter in your schema.
+
+### Generate
+
+```bash
+npm run generate:api
+```
+
+Requires `npm run generate:client` first (routes call `createDbClient` from `generated/db.ts`).
+
+Outputs:
+
+| File | Purpose |
+|------|---------|
+| `generated/app.ts` | Hono app entry point — mounts routers, connects to PostgreSQL, starts the server |
+| `generated/schemas/validation.ts` | Per-model Zod schemas: `{Model}CreateSchema`, `{Model}UpdateSchema`, `{Model}ParamSchema` |
+| `generated/routes/*.ts` | One Hono router per model with GET / POST / PUT / DELETE handlers |
+
+### Start the server
+
+```bash
+npm run dev:api
+# → regenerates client + API, then starts http://localhost:3000
+```
+
+Or run the generated entry point directly after generation:
+
+```bash
+npx tsx generated/app.ts
+```
+
+Environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | — (required) | PostgreSQL connection string (loaded from `.env`) |
+| `PORT` | `3000` | HTTP listen port |
+
+The server uses `@hono/node-server` and connects via a shared `pg` `Pool`. The DB client is injected into every request through Hono context (`c.get('db')`).
+
+### Routes
+
+Each model in `app.schema` maps to a kebab-case plural base path. Handlers delegate to the generated DB client — no ORM, same parameterized SQL as the client layer.
+
+| Model | Base path | Primary key route |
+|-------|-----------|-------------------|
+| `User` | `/users` | `/users/:id` |
+| `Profile` | `/profiles` | `/profiles/:id` |
+| `Order` | `/orders` | `/orders/:id` |
+| `Log` | `/logs` | `/logs/:id` |
+| `Product` | `/products` | `/products/:id` |
+| `ProductOrder` | `/product-orders` | `/product-orders/:orderId/:productId` |
+
+Models with composite primary keys (`@@id(fields: [...])`) expose one path segment per key field.
+
+### Endpoints
+
+Every router exposes the same CRUD shape:
+
+| Method | Path | Handler | Validation |
+|--------|------|---------|------------|
+| `GET` | `/` | `findMany()` — list all records | — |
+| `GET` | `/{pk}` | `findUnique(where)` — single record | Path params |
+| `POST` | `/` | `create(body)` | JSON body |
+| `PUT` | `/{pk}` | `update({ where, data })` | Path params + JSON body |
+| `DELETE` | `/{pk}` | `delete(where)` | Path params |
+
+`POST` returns `201 Created`. Missing records on `GET` return `404`.
+
+### Validation
+
+Zod schemas are generated from stored fields (relation fields are excluded). Rules from the DSL:
+
+```ts
+email: VARCHAR(255) @regex(pattern: "^[\\w.-]+@[\\w.-]+\\.\\w+$", message: "Invalid email address")
+age:   SMALLINT?    @range(min: 1, max: 120, message: "Age must be between 1 and 120")
+```
+
+Become generated validators with the same messages:
+
+```typescript
+email: z.string().regex(/^[\w.-]+@[\w.-]+\.\w+$/, { message: 'Invalid email address' }),
+age:   z.number().int().min(1, { message: 'Age must be between 1 and 120' }).max(120, { message: 'Age must be between 1 and 120' }).nullable().optional(),
+```
+
+Validation runs through middleware in `src/api/middleware/validate.ts`. On failure the API responds with:
+
+```json
+{ "error": "Invalid email address" }
+```
+
+Fields with `@default` or optional (`?`) types are optional on create. Update schemas make all non-PK fields optional (partial updates).
+
+### Example requests
+
+```bash
+# List users
+curl http://localhost:3000/users
+
+# Get one user
+curl http://localhost:3000/users/{uuid}
+
+# Create a user
+curl -X POST http://localhost:3000/users \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com","name":"Alice","balance":0}'
+
+# Validation failure (schema message returned)
+curl -X POST http://localhost:3000/users \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"not-an-email","name":"Alice","balance":0}'
+# → {"error":"Invalid email address"}
+
+# Update a user
+curl -X PUT http://localhost:3000/users/{uuid} \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Alice Updated"}'
+
+# Delete a user
+curl -X DELETE http://localhost:3000/users/{uuid}
+
+# Composite primary key
+curl http://localhost:3000/product-orders/{orderId}/{productId}
+```
+
+### Error responses
+
+| Status | When |
+|--------|------|
+| `400` | Zod validation failure or foreign key violation |
+| `404` | Record not found on `GET`, or delete/update returned no rows |
+| `409` | Unique constraint violation |
+| `500` | Other database errors |
+
+Global error handling lives in `src/api/middleware/errors.ts` and maps the same typed exceptions as the DB client layer.
+
+### App configuration
+
+The generated `app.ts` sets up:
+
+```typescript
+import { Hono } from 'hono';
+import { logger } from 'hono/logger';
+import { prettyJSON } from 'hono/pretty-json';
+
+const app = new Hono();
+app.use(logger());
+app.use(prettyJSON());
+app.use(createDbMiddleware());  // injects db from DATABASE_URL
+app.onError(handleError);
+
+app.route('/users', usersRouter);
+// ... all generated routers
+```
+
+### Runtime architecture
+
+Generated routes and schemas are thin wrappers. The HTTP runtime lives in `src/api/`:
+
+```
+src/api/
+├── types.ts                  # Hono AppEnv (db in context)
+├── middleware/
+│   ├── db.ts                 # Pool + createDbClient + context middleware
+│   ├── validate.ts           # Zod validation wrappers
+│   └── errors.ts             # HTTP error mapping
+└── utils/
+    └── route-naming.ts       # Model → kebab-case plural paths
+
+src/api-generator/
+├── zod-schema-generator.ts   # AST → Zod schemas
+├── route-generator.ts        # AST → Hono routers
+├── app-generator.ts          # AST → app.ts entry point
+└── generate-api-cli.ts       # npm run generate:api
+```
+
+URL query-string filters for `findMany` (e.g. `?role=ADMIN`) and ACL enforcement from `@policy` are planned for a future release.
+
+---
+
 ## Project Structure
 
 ```
@@ -411,11 +595,7 @@ my-project/
 │   ├── db.ts               # createDbClient(pool) factory
 │   ├── db-types.ts         # Generated model + input interfaces
 │   ├── db-model-meta.ts    # Runtime column metadata
-│   ├── app.ts              # Hono entry point (planned)
-│   ├── middleware/
-│   │   ├── auth.ts         # JWT / session extraction
-│   │   ├── acl.ts          # Policy enforcement
-│   │   └── validate.ts     # Zod validation helpers
+│   ├── app.ts              # Hono entry point (starts server on :3000)
 │   ├── routes/
 │   │   ├── users.ts
 │   │   ├── profiles.ts
@@ -424,6 +604,8 @@ my-project/
 │   └── schemas/
 │       └── validation.ts   # Generated Zod schemas
 ├── src/db/                 # DB client runtime (query builder, not generated)
+├── src/api/                # REST runtime (middleware, validation, errors)
+├── src/api-generator/      # AST → Hono routes + Zod schemas
 └── package.json
 ```
 
@@ -449,7 +631,7 @@ my-project/
 - [x] SQL DDL generator (full regeneration)
 - [x] Type-safe database client generator (`createDbClient`, parameterized query builder)
 - [x] Diff-based migration planner
-- [ ] Hono route generator with Zod validation
+- [x] Hono route generator with Zod validation
 - [ ] Static ACL middleware generation
 - [ ] Relation `include` in DB client
 - [ ] Row-level policy injection (`WHERE` clause generation)
