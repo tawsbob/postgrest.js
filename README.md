@@ -1,4 +1,4 @@
-# SchemaForge
+# Postgrest.js
 
 > A single-file backend framework for PostgreSQL and Node.js. Define your database schema, ACL policies, and validations in one declarative DSL — then generate the SQL, the API, and the types.
 
@@ -6,7 +6,7 @@
 
 ## Philosophy
 
-Most backend frameworks force you to scatter your truth across migrations, ORM models, Zod schemas, route handlers, and access control lists. SchemaForge inverts that: **your schema definition is the source of truth** for everything — the database, the REST API, and the runtime validations.
+Most backend frameworks force you to scatter your truth across migrations, ORM models, Zod schemas, route handlers, and access control lists. postgrest.js inverts that: **your schema definition is the source of truth** for everything — the database, the REST API, and the runtime validations.
 
 - **One file.** Schema, relations, triggers, indexes, and ACL in a single `.schema` file.
 - **Zero ORM.** We generate raw PostgreSQL and parameterized queries. No hidden query builders, no N+1 surprises.
@@ -191,11 +191,11 @@ models {
 
 ```bash
 # 1. Create your schema
-npx schemaforge init
+npx postgrestjs init
 # → creates app.schema
 
 # 2. Generate SQL and API
-npx schemaforge generate
+npx postgrestjs generate
 # → outputs schema.sql
 # → outputs generated/ (routes, schemas, middleware)
 
@@ -203,7 +203,7 @@ npx schemaforge generate
 psql $DATABASE_URL -f schema.sql
 
 # 4. Start the server
-npx schemaforge dev
+npx postgrestjs dev
 # → Hono server on http://localhost:3000
 ```
 
@@ -611,9 +611,9 @@ my-project/
 
 ---
 
-## Why SchemaForge?
+## Why postgrest.js?
 
-| Concern | ORM Approach | SchemaForge Approach |
+| Concern | ORM Approach | postgrest.js Approach |
 |---------|-----------|----------------------|
 | Schema truth | Migrations + models + Zod + routes | One `.schema` file |
 | Query visibility | Hidden behind ORM methods | Raw, parameterized SQL |
@@ -638,6 +638,7 @@ my-project/
 - [ ] Type generation for frontend consumption
 - [ ] Tree-sitter grammar for editor support
 - [ ] VS Code extension with syntax highlighting
+- [ ] JWT Authentication
 
 ---
 
