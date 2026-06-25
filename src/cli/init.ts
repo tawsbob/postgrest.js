@@ -10,6 +10,7 @@ import {
   ENV_TEMPLATE,
   GITIGNORE_TEMPLATE,
   HEALTH_ROUTE_TEMPLATE,
+  MAKEFILE_TEMPLATE,
   TSCONFIG_TEMPLATE,
 } from './templates.js';
 
@@ -18,6 +19,7 @@ const INIT_FILES = [
   { relativePath: '.env', content: ENV_TEMPLATE },
   { relativePath: '.gitignore', content: GITIGNORE_TEMPLATE },
   { relativePath: 'docker-compose.yml', content: DOCKER_COMPOSE_TEMPLATE },
+  { relativePath: 'Makefile', content: MAKEFILE_TEMPLATE },
   { relativePath: 'tsconfig.json', content: TSCONFIG_TEMPLATE },
   { relativePath: 'src/routes/health.ts', content: HEALTH_ROUTE_TEMPLATE },
 ] as const;
@@ -125,6 +127,9 @@ export async function runInit(args: string[]): Promise<void> {
   if (skipInstall) {
     console.log('  npm install');
   }
+  console.log('  make dev');
+  console.log('');
+  console.log('  # or run individually:');
   console.log('  docker compose up -d');
   console.log(`  npx ${PACKAGE_NAME} generate`);
   console.log(`  npx ${PACKAGE_NAME} db:bootstrap`);

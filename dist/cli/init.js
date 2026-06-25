@@ -3,12 +3,13 @@ import { PACKAGE_NAME } from '../constants.js';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { APP_SCHEMA_TEMPLATE, createPackageJsonTemplate, DOCKER_COMPOSE_TEMPLATE, ENV_TEMPLATE, GITIGNORE_TEMPLATE, HEALTH_ROUTE_TEMPLATE, TSCONFIG_TEMPLATE, } from './templates.js';
+import { APP_SCHEMA_TEMPLATE, createPackageJsonTemplate, DOCKER_COMPOSE_TEMPLATE, ENV_TEMPLATE, GITIGNORE_TEMPLATE, HEALTH_ROUTE_TEMPLATE, MAKEFILE_TEMPLATE, TSCONFIG_TEMPLATE, } from './templates.js';
 const INIT_FILES = [
     { relativePath: 'app.schema', content: APP_SCHEMA_TEMPLATE },
     { relativePath: '.env', content: ENV_TEMPLATE },
     { relativePath: '.gitignore', content: GITIGNORE_TEMPLATE },
     { relativePath: 'docker-compose.yml', content: DOCKER_COMPOSE_TEMPLATE },
+    { relativePath: 'Makefile', content: MAKEFILE_TEMPLATE },
     { relativePath: 'tsconfig.json', content: TSCONFIG_TEMPLATE },
     { relativePath: 'src/routes/health.ts', content: HEALTH_ROUTE_TEMPLATE },
 ];
@@ -101,6 +102,9 @@ export async function runInit(args) {
     if (skipInstall) {
         console.log('  npm install');
     }
+    console.log('  make dev');
+    console.log('');
+    console.log('  # or run individually:');
     console.log('  docker compose up -d');
     console.log(`  npx ${PACKAGE_NAME} generate`);
     console.log(`  npx ${PACKAGE_NAME} db:bootstrap`);

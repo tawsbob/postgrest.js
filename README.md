@@ -204,6 +204,14 @@ cd my-app
 Edit `app.schema`, then generate code and start the API:
 
 ```bash
+make dev
+# → starts PostgreSQL, generates code, bootstraps the DB, and runs the dev server
+# → http://localhost:3000
+```
+
+Or run each step individually:
+
+```bash
 # Start PostgreSQL (PostGIS-enabled, matches .env defaults)
 docker compose up -d
 
@@ -225,6 +233,7 @@ The `init` command creates everything you need to get running:
 | `app.schema` | Starter schema (one `User` model) — edit this |
 | `.env` | `DATABASE_URL`, JWT settings |
 | `docker-compose.yml` | Local PostGIS PostgreSQL on `:5432` |
+| `Makefile` | `make dev` — docker compose + generate + db:bootstrap + dev |
 | `tsconfig.json` | TypeScript config for `generated/` and `src/routes/` |
 | `package.json` | `schematic-pg` + runtime deps (`hono`, `pg`, `zod`, …) |
 | `src/routes/health.ts` | Example custom route mounted at `/health` |
@@ -286,6 +295,7 @@ schematic-pg dev [schema]   # generate:client + generate:api, then start generat
 Equivalent npm scripts in a project created by `init`:
 
 ```bash
+make dev           # docker compose up -d + generate + db:bootstrap + dev
 npm run dev        # schematic-pg dev
 npm run generate   # schematic-pg generate
 ```

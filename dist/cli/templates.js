@@ -62,6 +62,14 @@ export const TSCONFIG_TEMPLATE = `{
   "include": ["generated/**/*", "src/**/*"]
 }
 `;
+export const MAKEFILE_TEMPLATE = `.PHONY: dev
+
+dev:
+\tdocker compose up -d
+\tnpx ${PACKAGE_NAME} generate
+\tnpx ${PACKAGE_NAME} db:bootstrap
+\tnpx ${PACKAGE_NAME} dev
+`;
 export const HEALTH_ROUTE_TEMPLATE = `import { Hono } from 'hono';
 import type { AppEnv } from '${PACKAGE_NAME}/api/types';
 
