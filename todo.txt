@@ -11,3 +11,4 @@
 - [ ] add swagger ui to the api.
 - [ ] add default authentication route.
 - [ ] add a way to the dev add custom routes.
+- [ ] add to cli templates the pkg version

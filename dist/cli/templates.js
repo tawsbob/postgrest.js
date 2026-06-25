@@ -1,5 +1,11 @@
 import { PACKAGE_NAME } from '../constants.js';
-export const APP_SCHEMA_TEMPLATE = `models {
+export const APP_SCHEMA_TEMPLATE = `extensions {
+}
+
+enums {
+}
+
+models {
   model User {
     id:        UUID        @id @default(gen_random_uuid())
     email:     VARCHAR(255) @unique
