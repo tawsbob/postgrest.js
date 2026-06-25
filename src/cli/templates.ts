@@ -16,6 +16,15 @@ JWT_ROLE_CLAIM=role
 JWT_USER_ID_CLAIM=sub
 `;
 
+export const GITIGNORE_TEMPLATE = `node_modules/
+dist/
+.env
+docker_data/
+.DS_Store
+*.log
+npm-debug.log*
+`;
+
 export const DOCKER_COMPOSE_TEMPLATE = `services:
   postgres:
     image: postgis/postgis:16-3.4

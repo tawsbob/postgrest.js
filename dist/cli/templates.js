@@ -1,15 +1,5 @@
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../constants.js';
-
-//always leave the extensions and enums empty
-export const APP_SCHEMA_TEMPLATE = `extensions {
-
-}
-
-enums {
-  
-}
-
-models {
+export const APP_SCHEMA_TEMPLATE = `models {
   model User {
     id:        UUID        @id @default(gen_random_uuid())
     email:     VARCHAR(255) @unique
@@ -22,6 +12,14 @@ export const ENV_TEMPLATE = `DATABASE_URL=postgresql://postgrest:postgrest@local
 JWT_SECRET=
 JWT_ROLE_CLAIM=role
 JWT_USER_ID_CLAIM=sub
+`;
+export const GITIGNORE_TEMPLATE = `node_modules/
+dist/
+.env
+docker_data/
+.DS_Store
+*.log
+npm-debug.log*
 `;
 export const DOCKER_COMPOSE_TEMPLATE = `services:
   postgres:

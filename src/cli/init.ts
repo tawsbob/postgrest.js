@@ -8,6 +8,7 @@ import {
   createPackageJsonTemplate,
   DOCKER_COMPOSE_TEMPLATE,
   ENV_TEMPLATE,
+  GITIGNORE_TEMPLATE,
   HEALTH_ROUTE_TEMPLATE,
   TSCONFIG_TEMPLATE,
 } from './templates.js';
@@ -15,6 +16,7 @@ import {
 const INIT_FILES = [
   { relativePath: 'app.schema', content: APP_SCHEMA_TEMPLATE },
   { relativePath: '.env', content: ENV_TEMPLATE },
+  { relativePath: '.gitignore', content: GITIGNORE_TEMPLATE },
   { relativePath: 'docker-compose.yml', content: DOCKER_COMPOSE_TEMPLATE },
   { relativePath: 'tsconfig.json', content: TSCONFIG_TEMPLATE },
   { relativePath: 'src/routes/health.ts', content: HEALTH_ROUTE_TEMPLATE },
@@ -45,6 +47,26 @@ function runNpmInstall(cwd: string): Promise<void> {
       }
 
       reject(new Error(`npm install failed with exit code ${code}`));
+    });
+  });
+}
+
+function runGitInit(cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['init'], {
+      cwd,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`git init failed with exit code ${code}`));
     });
   });
 }
@@ -86,6 +108,14 @@ export async function runInit(args: string[]): Promise<void> {
   if (!skipInstall) {
     console.log('\nRunning npm install...');
     await runNpmInstall(targetDir);
+  }
+
+  const gitDir = path.join(targetDir, '.git');
+  if (existsSync(gitDir)) {
+    console.log('\nSkipped git init (already a repository)');
+  } else {
+    console.log('\nRunning git init...');
+    await runGitInit(targetDir);
   }
 
   console.log('\nNext steps:');

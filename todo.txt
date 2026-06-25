@@ -10,5 +10,6 @@
 - [x] add to policy a way to only allow to update entries that user are owner of.
 - [ ] add swagger ui to the api.
 - [ ] add default authentication route.
-- [ ] add a way to the dev add custom routes.
-- [ ] add to cli templates the pkg version
+- [x] add a way to the dev add custom routes.
+- [x] add to cli templates the pkg version
+- [ ] create a make file or a way to run dev comand and run all process (docker-compose up, generate, db:bootstrap, dev)
