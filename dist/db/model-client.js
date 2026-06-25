@@ -1,7 +1,8 @@
 import { mapPgError } from './errors.js';
+import { fetchWithIncludes } from './include/load.js';
 import { QueryBuilder } from './query-builder.js';
 import { mapRow, mapRows } from './row-mapper.js';
-export function createModelClient(model, pool) {
+export function createModelClient(model, pool, registry) {
     const builder = new QueryBuilder(model);
     async function execute(sql, params) {
         try {
@@ -12,35 +13,40 @@ export function createModelClient(model, pool) {
             throw mapPgError(error, model.name, model.columnToField);
         }
     }
+    async function selectRows(args = {}) {
+        const findArgs = toFindArgs(args);
+        if (args.include && registry) {
+            return fetchWithIncludes(model, registry, pool, {
+                ...findArgs,
+                include: args.include,
+            }, {
+                relationLoadStrategy: args.relationLoadStrategy,
+            });
+        }
+        const query = builder.select(findArgs);
+        const rows = await execute(query.sql, query.params);
+        return mapRows(rows, model);
+    }
     return {
         async create(data) {
             const query = builder.insert(data);
             const rows = await execute(query.sql, query.params);
             return mapRow(rows[0], model);
         },
-        async findUnique(where) {
-            const query = builder.select({ where, take: 1 });
-            const rows = await execute(query.sql, query.params);
-            return rows[0] ? mapRow(rows[0], model) : null;
-        },
-        async findFirst(args) {
-            const query = builder.select({
-                where: args?.where,
-                orderBy: args?.orderBy,
+        async findUnique(where, args = {}) {
+            const rows = await selectRows({
+                ...args,
+                where: where,
                 take: 1,
             });
-            const rows = await execute(query.sql, query.params);
-            return rows[0] ? mapRow(rows[0], model) : null;
+            return rows[0] ?? null;
         },
-        async findMany(args) {
-            const query = builder.select({
-                where: args?.where,
-                orderBy: args?.orderBy,
-                take: args?.take,
-                skip: args?.skip,
-            });
-            const rows = await execute(query.sql, query.params);
-            return mapRows(rows, model);
+        async findFirst(args = {}) {
+            const rows = await selectRows({ ...args, take: 1 });
+            return rows[0] ?? null;
+        },
+        async findMany(args = {}) {
+            return selectRows(args);
         },
         async count(args) {
             const query = builder.count({ where: args?.where });
@@ -79,5 +85,13 @@ export function createModelClient(model, pool) {
             const rows = await execute(query.sql, query.params);
             return { count: rows.length };
         },
+    };
+}
+function toFindArgs(args) {
+    return {
+        where: args.where,
+        orderBy: args.orderBy,
+        take: args.take,
+        skip: args.skip,
     };
 }

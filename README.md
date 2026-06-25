@@ -9,7 +9,7 @@
 Most backend frameworks force you to scatter your truth across migrations, ORM models, Zod schemas, route handlers, and access control lists. schematic-pg inverts that: **your schema definition is the source of truth** for everything — the database, the REST API, and the runtime validations.
 
 - **One file.** Schema, relations, triggers, indexes, and ACL in a single `.schema` file.
-- **Zero ORM.** We generate raw PostgreSQL and parameterized queries. No hidden query builders, no N+1 surprises.
+- **Zero ORM.** We generate raw PostgreSQL and parameterized queries. No hidden query builders — relation loading is explicit via `include`, with batched queries that avoid N+1 and cartesian explosion.
 - **Hand-written parser.** A small, fast recursive-descent lexer/parser with zero parser-generator dependencies.
 - **Hono-based runtime.** Lightweight HTTP handlers generated from your schema, with Zod validation on every write.
 
@@ -19,7 +19,7 @@ Most backend frameworks force you to scatter your truth across migrations, ORM m
 
 - **Declarative Schema DSL** — PostgreSQL-native types, enums, extensions, indexes, and triggers
 - **Automatic SQL Generation** — idempotent DDL with snake_case naming conventions
-- **Type-safe Database Client** — Prisma-like query API over parameterized raw SQL (`pg` Pool, no ORM)
+- **Type-safe Database Client** — Prisma-like query API over parameterized raw SQL (`pg` Pool, no ORM), with nested `include` eager-loading
 - **Type-safe REST API** — Hono routes with generated Zod validation
 - **Custom routes** — Hand-written Hono routers in `src/routes/` auto-imported into the generated app
 - **Inline ACL** — Row-level and role-based access control via `@policy` directives, enforced at runtime in generated routes
@@ -179,7 +179,7 @@ models {
 
 1. **Parse** — The hand-written lexer and recursive-descent parser turn your `.schema` file into a typed AST.
 2. **Generate SQL** — The DDL generator emits idempotent PostgreSQL: extensions, enums, tables, foreign keys, indexes, and triggers. All identifiers are automatically converted to `snake_case`.
-3. **Generate DB client** — The client generator emits TypeScript interfaces and a `createDbClient(pool)` factory with per-model CRUD methods backed by a runtime query builder. All SQL uses `$1`, `$2`, … placeholders — user input is never interpolated.
+3. **Generate DB client** — The client generator emits TypeScript interfaces (including `{Model}Include` types), relation metadata, and a `createDbClient(pool)` factory with per-model CRUD methods and nested `include` eager-loading. All SQL uses `$1`, `$2`, … placeholders — user input is never interpolated.
 4. **Generate API** — The route generator emits Hono routers with:
    - Zod-validated request bodies and path params (driven by `@regex` and `@range`)
    - Full CRUD handlers backed by the generated DB client
@@ -348,8 +348,8 @@ Outputs:
 
 | File | Purpose |
 |------|---------|
-| `generated/db-types.ts` | Per-model interfaces: `User`, `UserCreateInput`, `UserUpdateInput`, `UserWhereInput`, `UserOrderByInput`, enum unions |
-| `generated/db-model-meta.ts` | Serialized field/column metadata consumed at runtime |
+| `generated/db-types.ts` | Per-model interfaces: `User`, `UserCreateInput`, `UserWhereInput`, `UserInclude`, enum unions |
+| `generated/db-model-meta.ts` | Serialized field/column and relation metadata consumed at runtime |
 | `generated/db.ts` | `createDbClient(pool)` factory wiring all models |
 
 ### Usage
@@ -382,6 +382,29 @@ const many = await db.user.findMany({
 });
 const total = await db.user.count({ where: { role: 'ADMIN' } });
 
+// Eager-load relations (nested)
+const usersWithOrders = await db.user.findMany({
+  where: { role: 'ADMIN' },
+  include: {
+    profile: true,
+    orders: {
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        products: {
+          include: { product: true },
+        },
+      },
+    },
+  },
+});
+
+// include works on all read methods
+const oneWithProfile = await db.user.findUnique(
+  { id: user.id },
+  { include: { profile: true } },
+);
+
 // Update
 const updated = await db.user.update({
   where: { id: user.id },
@@ -404,16 +427,95 @@ Each model in `app.schema` becomes a camelCase property on the client (`User` �
 | Method | SQL shape |
 |--------|-----------|
 | `create(data)` | `INSERT INTO … VALUES ($1, …) RETURNING *` |
-| `findUnique(where)` | `SELECT * … WHERE … LIMIT 1` |
-| `findFirst({ where, orderBy })` | `SELECT * … ORDER BY … LIMIT 1` |
-| `findMany({ where, orderBy, take, skip })` | `SELECT * … ORDER BY … LIMIT … OFFSET …` |
-| `count({ where })` | `SELECT COUNT(*) …` |
+| `findUnique(where, { include, … })` | `SELECT * … WHERE … LIMIT 1` (+ batched relation queries when `include` is set) |
+| `findFirst({ where, orderBy, include, … })` | `SELECT * … ORDER BY … LIMIT 1` (+ relation queries when `include` is set) |
+| `findMany({ where, orderBy, take, skip, include, … })` | `SELECT * … ORDER BY … LIMIT … OFFSET …` (+ relation queries when `include` is set) |
+| `count({ where })` | `SELECT COUNT(*) …` (no `include`) |
 | `update({ where, data })` | `UPDATE … SET … WHERE … RETURNING *` |
 | `updateMany({ where, data })` | `UPDATE … SET … WHERE … RETURNING *` |
 | `delete(where)` | `DELETE … WHERE … RETURNING *` |
 | `deleteMany({ where })` | `DELETE … WHERE … RETURNING *` |
 
 Mutations return the full row (`RETURNING *`). Rows are mapped from `snake_case` columns to `camelCase` TypeScript fields.
+
+### Eager loading (`include`)
+
+Load related models in one call and get back a nested JSON tree. Relation fields are inferred from your schema (`orders: Order[]`, `profile: Profile?`, `@relation(fields: …, references: …)`).
+
+**Supported on:** `findMany`, `findFirst`, and `findUnique`. Not on `count`.
+
+```typescript
+// Shorthand — load all columns for the relation
+await db.user.findMany({
+  include: { profile: true, orders: true },
+});
+
+// Nested — arbitrary depth
+await db.user.findMany({
+  include: {
+    orders: {
+      include: {
+        products: {
+          include: { product: true },
+        },
+      },
+    },
+  },
+});
+
+// Filter, sort, and paginate inner relations
+await db.user.findMany({
+  include: {
+    orders: {
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      include: { products: true },
+    },
+  },
+});
+```
+
+Each relation key accepts `true` or a `{ where?, orderBy?, take?, skip?, include? }` object (typed as `{Model}IncludeArgs` in `generated/db-types.ts`).
+
+**Return shape:** scalar relation fields (`profile: Profile?`) become `Profile | null`. List relations (`orders: Order[]`) become arrays on the result object. Nested `include` keys are attached on each child row the same way.
+
+#### Loading strategies
+
+By default the client uses **query splitting**: one SQL query for the root rows, then one batched query per included relation level (`WHERE foreign_key = ANY($1)` with deduplicated parent keys). This avoids cartesian explosion when loading multiple `hasMany` relations at the same level (e.g. `profile` + `orders` on `User`).
+
+```typescript
+// Default — split queries (recommended for large result sets)
+await db.user.findMany({
+  include: { orders: true },
+});
+
+// Optional — single round-trip via PostgreSQL LATERAL + json_agg
+await db.user.findMany({
+  include: { profile: true, orders: true },
+  relationLoadStrategy: 'join',
+});
+```
+
+| Strategy | Option | Behavior |
+|----------|--------|----------|
+| Split (default) | omit or `'split'` | One query per relation edge; no row duplication on the wire |
+| Join | `'join'` | One SQL statement; nested JSON built in PostgreSQL |
+
+Use `'join'` when latency dominates (fewer round trips). Use the default split strategy when loading many rows or several sibling collections.
+
+#### How it works
+
+```
+findMany({ include })  →  buildLoadPlan (relation tree from schema metadata)
+                        →  SELECT root rows
+                        →  for each included relation: SELECT … WHERE fk = ANY($parentIds)
+                        →  stitch (hash-join children onto parents in O(n))
+```
+
+Relation metadata is generated into `generated/db-model-meta.ts` and resolved through an in-memory model registry inside `createDbClient`. Include depth is capped at 10 levels.
+
+Generated types: `{Model}Include` and `{Model}IncludeArgs` in `generated/db-types.ts`.
 
 ### Where filters
 
@@ -492,11 +594,11 @@ schematic-pg/dist/db/        # Published runtime (import as schematic-pg/db/*)
 ├── query-builder.ts        # INSERT / SELECT / UPDATE / DELETE / COUNT
 ├── where-translator.ts     # WhereInput → SQL + params
 ├── model-client.ts         # createModelClient factory
+├── include/                # Eager-loading planner, executor, hydrator, json_agg
+├── utils/relations.ts      # Relation graph from schema AST
 ├── row-mapper.ts           # snake_case rows → camelCase + coercion
 └── errors.ts               # UniqueConstraintError, ForeignKeyConstraintError, …
 ```
-
-Relation `include` (e.g. `findMany({ include: { profile: true } })`) is planned for a future release.
 
 ### Integration tests
 
@@ -508,7 +610,7 @@ npm run test:integration
 
 This resets the `public` schema, bootstraps from `app.schema`, seeds test data, and exercises:
 
-- **DB client** — CRUD, filters, and error handling ([`src/db/__tests__/db-client.integration.test.ts`](src/db/__tests__/db-client.integration.test.ts))
+- **DB client** — CRUD, filters, nested `include` eager-loading, and error handling ([`src/db/__tests__/db-client.integration.test.ts`](src/db/__tests__/db-client.integration.test.ts))
 - **ACL over HTTP** — role checks, row-level filters, JWT auth, and open endpoints ([`src/api/__tests__/acl.integration.test.ts`](src/api/__tests__/acl.integration.test.ts))
 
 Tests run in-process via Hono `app.request()` against the exported `createApp()` factory from `generated/app.ts`.
@@ -966,7 +1068,7 @@ postgrest.js/
 ├── src/
 │   ├── schema-dsl/         # Lexer, parser, AST
 │   ├── sql-generator/      # DDL + migration planner
-│   ├── db/                 # Query builder + client runtime
+│   ├── db/                 # Query builder + client runtime + include eager-loading
 │   ├── api/                # Hono runtime (published as schematic-pg/api/*)
 │   ├── api-generator/      # AST → routes, Zod, policies, app
 │   ├── cli/                # init templates + command helpers
@@ -986,7 +1088,7 @@ postgrest.js/
 | Schema truth | Migrations + models + Zod + routes | One `.schema` file |
 | Query visibility | Hidden behind ORM methods | Raw, parameterized SQL |
 | Client ergonomics | ORM model API | Generated Prisma-like client, no ORM runtime |
-| Performance | N+1, lazy loading pitfalls | Explicit joins, no magic |
+| Performance | N+1, lazy loading pitfalls | Explicit `include`; batched split queries by default |
 | ACL | External service or manual checks | Inline `@policy` directives |
 | Validation | Separate Zod schemas | Derived from `@regex` / `@range` |
 | Dependencies | Heavy (Prisma, Drizzle, etc.) | Hono + pg + Zod + hand-written parser |
@@ -1005,7 +1107,7 @@ postgrest.js/
 - [x] Row-level policy injection (`WHERE` clause from `where:` templates)
 - [x] JWT authentication (default Bearer resolver, pluggable `AuthResolver`)
 - [x] Custom routes (`src/routes/` auto-imported into generated app)
-- [ ] Relation `include` in DB client
+- [x] Relation `include` in DB client (nested eager-loading, split + json_agg strategies)
 - [ ] Type generation for frontend consumption
 - [ ] Tree-sitter grammar for editor support
 - [x] VS Code extension with syntax highlighting and language server

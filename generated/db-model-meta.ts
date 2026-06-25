@@ -446,7 +446,26 @@ export const userModelMeta = {
     "is_active": "isActive",
     "created_at": "createdAt",
     "updated_at": "updatedAt"
-  }
+  },
+  "relations": [
+    {
+      "name": "profile",
+      "kind": "hasOne",
+      "targetModel": "Profile",
+      "localKey": "id",
+      "foreignKey": "userId",
+      "unique": true,
+      "relationName": "UserProfile"
+    },
+    {
+      "name": "orders",
+      "kind": "hasMany",
+      "targetModel": "Order",
+      "localKey": "id",
+      "foreignKey": "userId",
+      "unique": false
+    }
+  ]
 } as const;
 export const profileModelMeta = {
   "name": "Profile",
@@ -697,7 +716,18 @@ export const profileModelMeta = {
     "bio": "bio",
     "avatar": "avatar",
     "location": "location"
-  }
+  },
+  "relations": [
+    {
+      "name": "user",
+      "kind": "belongsTo",
+      "targetModel": "User",
+      "localKey": "userId",
+      "foreignKey": "id",
+      "unique": true,
+      "relationName": "UserProfile"
+    }
+  ]
 } as const;
 export const orderModelMeta = {
   "name": "Order",
@@ -1048,7 +1078,25 @@ export const orderModelMeta = {
     "items": "items",
     "created_at": "createdAt",
     "updated_at": "updatedAt"
-  }
+  },
+  "relations": [
+    {
+      "name": "user",
+      "kind": "belongsTo",
+      "targetModel": "User",
+      "localKey": "userId",
+      "foreignKey": "id",
+      "unique": true
+    },
+    {
+      "name": "products",
+      "kind": "hasMany",
+      "targetModel": "ProductOrder",
+      "localKey": "id",
+      "foreignKey": "orderId",
+      "unique": false
+    }
+  ]
 } as const;
 export const logModelMeta = {
   "name": "Log",
@@ -1197,7 +1245,8 @@ export const logModelMeta = {
     "id": "id",
     "message": "message",
     "created_at": "createdAt"
-  }
+  },
+  "relations": []
 } as const;
 export const productModelMeta = {
   "name": "Product",
@@ -1709,7 +1758,17 @@ export const productModelMeta = {
     "metadata": "metadata",
     "created_at": "createdAt",
     "updated_at": "updatedAt"
-  }
+  },
+  "relations": [
+    {
+      "name": "orders",
+      "kind": "hasMany",
+      "targetModel": "ProductOrder",
+      "localKey": "id",
+      "foreignKey": "productId",
+      "unique": false
+    }
+  ]
 } as const;
 export const productOrderModelMeta = {
   "name": "ProductOrder",
@@ -1969,5 +2028,23 @@ export const productOrderModelMeta = {
     "product_id": "productId",
     "quantity": "quantity",
     "price": "price"
-  }
+  },
+  "relations": [
+    {
+      "name": "order",
+      "kind": "belongsTo",
+      "targetModel": "Order",
+      "localKey": "orderId",
+      "foreignKey": "id",
+      "unique": true
+    },
+    {
+      "name": "product",
+      "kind": "belongsTo",
+      "targetModel": "Product",
+      "localKey": "productId",
+      "foreignKey": "id",
+      "unique": true
+    }
+  ]
 } as const;

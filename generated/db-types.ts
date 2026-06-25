@@ -302,3 +302,76 @@ export interface ProductOrderOrderByInput {
   price?: 'asc' | 'desc';
 }
 
+
+export interface UserIncludeArgs {
+  where?: UserWhereInput;
+  orderBy?: UserOrderByInput | UserOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: UserInclude;
+}
+
+export interface ProfileIncludeArgs {
+  where?: ProfileWhereInput;
+  orderBy?: ProfileOrderByInput | ProfileOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: ProfileInclude;
+}
+
+export interface OrderIncludeArgs {
+  where?: OrderWhereInput;
+  orderBy?: OrderOrderByInput | OrderOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: OrderInclude;
+}
+
+export interface LogIncludeArgs {
+  where?: LogWhereInput;
+  orderBy?: LogOrderByInput | LogOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: LogInclude;
+}
+
+export interface ProductIncludeArgs {
+  where?: ProductWhereInput;
+  orderBy?: ProductOrderByInput | ProductOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: ProductInclude;
+}
+
+export interface ProductOrderIncludeArgs {
+  where?: ProductOrderWhereInput;
+  orderBy?: ProductOrderOrderByInput | ProductOrderOrderByInput[];
+  take?: number;
+  skip?: number;
+  include?: ProductOrderInclude;
+}
+
+export interface UserInclude {
+  profile?: boolean | ProfileIncludeArgs;
+  orders?: boolean | OrderIncludeArgs;
+}
+
+export interface ProfileInclude {
+  user?: boolean | UserIncludeArgs;
+}
+
+export interface OrderInclude {
+  user?: boolean | UserIncludeArgs;
+  products?: boolean | ProductOrderIncludeArgs;
+}
+
+export interface LogInclude {}
+
+export interface ProductInclude {
+  orders?: boolean | ProductOrderIncludeArgs;
+}
+
+export interface ProductOrderInclude {
+  order?: boolean | OrderIncludeArgs;
+  product?: boolean | ProductIncludeArgs;
+}

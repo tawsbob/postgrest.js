@@ -8,31 +8,37 @@ import type {
   UserUpdateInput,
   UserWhereInput,
   UserOrderByInput,
+  UserInclude,
   Profile,
   ProfileCreateInput,
   ProfileUpdateInput,
   ProfileWhereInput,
   ProfileOrderByInput,
+  ProfileInclude,
   Order,
   OrderCreateInput,
   OrderUpdateInput,
   OrderWhereInput,
   OrderOrderByInput,
+  OrderInclude,
   Log,
   LogCreateInput,
   LogUpdateInput,
   LogWhereInput,
   LogOrderByInput,
+  LogInclude,
   Product,
   ProductCreateInput,
   ProductUpdateInput,
   ProductWhereInput,
   ProductOrderByInput,
+  ProductInclude,
   ProductOrder,
   ProductOrderCreateInput,
   ProductOrderUpdateInput,
   ProductOrderWhereInput,
   ProductOrderOrderByInput,
+  ProductOrderInclude,
 } from './db-types.js';
 import {
   userModelMeta,
@@ -50,14 +56,22 @@ export function createDbClient(pool: Pool) {
   const logMeta = hydrateModelMeta(logModelMeta);
   const productMeta = hydrateModelMeta(productModelMeta);
   const productOrderMeta = hydrateModelMeta(productOrderModelMeta);
+  const modelRegistry = new Map([
+        ['User', userMeta],
+        ['Profile', profileMeta],
+        ['Order', orderMeta],
+        ['Log', logMeta],
+        ['Product', productMeta],
+        ['ProductOrder', productOrderMeta],
+  ]);
 
   return {
-    user: createModelClient<User, UserCreateInput, UserUpdateInput, UserWhereInput, UserOrderByInput>(userMeta, pool),
-    profile: createModelClient<Profile, ProfileCreateInput, ProfileUpdateInput, ProfileWhereInput, ProfileOrderByInput>(profileMeta, pool),
-    order: createModelClient<Order, OrderCreateInput, OrderUpdateInput, OrderWhereInput, OrderOrderByInput>(orderMeta, pool),
-    log: createModelClient<Log, LogCreateInput, LogUpdateInput, LogWhereInput, LogOrderByInput>(logMeta, pool),
-    product: createModelClient<Product, ProductCreateInput, ProductUpdateInput, ProductWhereInput, ProductOrderByInput>(productMeta, pool),
-    productOrder: createModelClient<ProductOrder, ProductOrderCreateInput, ProductOrderUpdateInput, ProductOrderWhereInput, ProductOrderOrderByInput>(productOrderMeta, pool),
+    user: createModelClient<User, UserCreateInput, UserUpdateInput, UserWhereInput, UserOrderByInput>(userMeta, pool, modelRegistry),
+    profile: createModelClient<Profile, ProfileCreateInput, ProfileUpdateInput, ProfileWhereInput, ProfileOrderByInput>(profileMeta, pool, modelRegistry),
+    order: createModelClient<Order, OrderCreateInput, OrderUpdateInput, OrderWhereInput, OrderOrderByInput>(orderMeta, pool, modelRegistry),
+    log: createModelClient<Log, LogCreateInput, LogUpdateInput, LogWhereInput, LogOrderByInput>(logMeta, pool, modelRegistry),
+    product: createModelClient<Product, ProductCreateInput, ProductUpdateInput, ProductWhereInput, ProductOrderByInput>(productMeta, pool, modelRegistry),
+    productOrder: createModelClient<ProductOrder, ProductOrderCreateInput, ProductOrderUpdateInput, ProductOrderWhereInput, ProductOrderOrderByInput>(productOrderMeta, pool, modelRegistry),
   };
 }
 

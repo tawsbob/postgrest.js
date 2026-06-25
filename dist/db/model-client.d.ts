@@ -1,18 +1,20 @@
 import type { Pool } from 'pg';
+import type { IncludeInput, IncludeOptions } from './include/types.js';
 import type { ModelMeta } from './model-meta.js';
+export type ModelRegistry = Map<string, ModelMeta>;
+export interface SelectArgs<TWhere, TOrderBy> {
+    where?: TWhere;
+    orderBy?: TOrderBy | TOrderBy[];
+    take?: number;
+    skip?: number;
+    include?: IncludeInput;
+    relationLoadStrategy?: IncludeOptions['relationLoadStrategy'];
+}
 export interface ModelClient<T, TCreate, TUpdate, TWhere, TOrderBy> {
     create(data: TCreate): Promise<T>;
-    findUnique(where: Record<string, unknown>): Promise<T | null>;
-    findFirst(args?: {
-        where?: TWhere;
-        orderBy?: TOrderBy;
-    }): Promise<T | null>;
-    findMany(args?: {
-        where?: TWhere;
-        orderBy?: TOrderBy | TOrderBy[];
-        take?: number;
-        skip?: number;
-    }): Promise<T[]>;
+    findUnique(where: Record<string, unknown>, args?: Omit<SelectArgs<TWhere, TOrderBy>, 'where'>): Promise<T | null>;
+    findFirst(args?: SelectArgs<TWhere, TOrderBy>): Promise<T | null>;
+    findMany(args?: SelectArgs<TWhere, TOrderBy>): Promise<T[]>;
     count(args?: {
         where?: TWhere;
     }): Promise<number>;
@@ -33,4 +35,4 @@ export interface ModelClient<T, TCreate, TUpdate, TWhere, TOrderBy> {
         count: number;
     }>;
 }
-export declare function createModelClient<T, TCreate, TUpdate, TWhere, TOrderBy>(model: ModelMeta, pool: Pool): ModelClient<T, TCreate, TUpdate, TWhere, TOrderBy>;
+export declare function createModelClient<T, TCreate, TUpdate, TWhere, TOrderBy>(model: ModelMeta, pool: Pool, registry?: ModelRegistry): ModelClient<T, TCreate, TUpdate, TWhere, TOrderBy>;

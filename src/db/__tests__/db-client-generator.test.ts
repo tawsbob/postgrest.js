@@ -29,10 +29,12 @@ describe('DbClientGenerator', () => {
 
     assert.match(files.dbTypes, /export interface User \{/);
     assert.match(files.dbTypes, /export interface UserCreateInput \{/);
-    assert.match(files.dbTypes, /export type UserRole = 'ADMIN' \| 'USER' \| 'PUBLIC';/);
+    assert.match(files.dbTypes, /export interface UserInclude \{/);
     assert.match(files.dbClient, /export function createDbClient\(pool: Pool\)/);
     assert.match(files.dbClient, /user: createModelClient<User, UserCreateInput/);
+    assert.match(files.dbClient, /const modelRegistry = new Map/);
     assert.match(files.modelMeta, /export const userModelMeta =/);
+    assert.match(files.modelMeta, /"relations"/);
     assert.match(files.modelMeta, /"quotedTableName": "\\"user\\""/);
   });
 });

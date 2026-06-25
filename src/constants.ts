@@ -5,3 +5,4 @@ const { version } = require('../package.json') as { version: string };
 
 export const PACKAGE_NAME = 'schematic-pg';
 export const PACKAGE_VERSION = version;
+export const MAX_INCLUDE_DEPTH = 10;

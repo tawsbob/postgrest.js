@@ -5,7 +5,20 @@ import {
   getPrimaryKey,
   getStoredFields,
 } from '../sql-generator/utils/ast-helpers.js';
+import { buildRelations } from './utils/relations.js';
 import { toColumnName, toTableName } from './utils/naming.js';
+
+export type RelationKind = 'belongsTo' | 'hasOne' | 'hasMany';
+
+export interface RelationMeta {
+  name: string;
+  kind: RelationKind;
+  targetModel: string;
+  localKey: string;
+  foreignKey: string;
+  unique: boolean;
+  relationName?: string;
+}
 
 export interface FieldMeta {
   name: string;
@@ -29,6 +42,7 @@ export interface ModelMetaSnapshot {
   fields: FieldMeta[];
   fieldByName: Record<string, FieldMeta>;
   columnToField: Record<string, string>;
+  relations: RelationMeta[];
 }
 
 export interface ModelMeta {
@@ -39,6 +53,8 @@ export interface ModelMeta {
   fields: FieldMeta[];
   fieldByName: Map<string, FieldMeta>;
   columnToField: Map<string, string>;
+  relations: RelationMeta[];
+  relationByName: Map<string, RelationMeta>;
 }
 
 const NUMERIC_TYPES = new Set(['INTEGER', 'SERIAL', 'SMALLINT', 'DECIMAL']);
@@ -58,6 +74,7 @@ export function buildModelMetaSnapshot(model: Model, schema: Schema): ModelMetaS
   const fields = storedFields.map((field) => toFieldMeta(field, enumNames, primaryKeyFields));
   const fieldByName = Object.fromEntries(fields.map((field) => [field.name, field]));
   const columnToField = Object.fromEntries(fields.map((field) => [field.columnName, field.name]));
+  const relations = buildRelations(model, schema);
 
   return {
     name: model.name,
@@ -67,12 +84,17 @@ export function buildModelMetaSnapshot(model: Model, schema: Schema): ModelMetaS
     fields,
     fieldByName,
     columnToField,
+    relations,
   };
 }
 
 export function hydrateModelMeta(snapshot: ModelMetaSnapshot): ModelMeta {
+  const relations = snapshot.relations ?? [];
+
   return {
     ...snapshot,
+    relations,
+    relationByName: new Map(relations.map((relation) => [relation.name, relation])),
     fieldByName: new Map(Object.entries(snapshot.fieldByName)),
     columnToField: new Map(Object.entries(snapshot.columnToField)),
   };

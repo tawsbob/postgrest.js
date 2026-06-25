@@ -1,4 +1,14 @@
 import type { Model, Schema, TypeExpr } from '../schema-dsl/ast.js';
+export type RelationKind = 'belongsTo' | 'hasOne' | 'hasMany';
+export interface RelationMeta {
+    name: string;
+    kind: RelationKind;
+    targetModel: string;
+    localKey: string;
+    foreignKey: string;
+    unique: boolean;
+    relationName?: string;
+}
 export interface FieldMeta {
     name: string;
     columnName: string;
@@ -20,6 +30,7 @@ export interface ModelMetaSnapshot {
     fields: FieldMeta[];
     fieldByName: Record<string, FieldMeta>;
     columnToField: Record<string, string>;
+    relations: RelationMeta[];
 }
 export interface ModelMeta {
     name: string;
@@ -29,6 +40,8 @@ export interface ModelMeta {
     fields: FieldMeta[];
     fieldByName: Map<string, FieldMeta>;
     columnToField: Map<string, string>;
+    relations: RelationMeta[];
+    relationByName: Map<string, RelationMeta>;
 }
 export declare function buildModelMeta(model: Model, schema: Schema): ModelMeta;
 export declare function buildModelMetaSnapshot(model: Model, schema: Schema): ModelMetaSnapshot;

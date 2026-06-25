@@ -11,6 +11,8 @@ export class TypeGenerator {
 
   generate(): string {
     const enumBlocks = this.schema.enums.map((enumDef) => this.generateEnumType(enumDef.name, enumDef.values));
+    const includeArgsBlocks = this.schema.models.map((model) => this.generateIncludeArgs(model));
+    const includeBlocks = this.schema.models.map((model) => this.generateInclude(model));
     const modelBlocks = this.schema.models.flatMap((model) => this.generateModelTypes(model));
 
     return [
@@ -18,6 +20,8 @@ export class TypeGenerator {
       '',
       ...enumBlocks,
       ...modelBlocks,
+      ...includeArgsBlocks,
+      ...includeBlocks,
     ].join('\n');
   }
 
@@ -77,6 +81,25 @@ export class TypeGenerator {
   private generateOrderByInput(modelName: string, fields: Field[]): string {
     const lines = fields.map((field) => `  ${field.name}?: 'asc' | 'desc';`);
     return `export interface ${modelName}OrderByInput {\n${lines.join('\n')}\n}\n`;
+  }
+
+  private generateIncludeArgs(model: Model): string {
+    return `export interface ${model.name}IncludeArgs {\n  where?: ${model.name}WhereInput;\n  orderBy?: ${model.name}OrderByInput | ${model.name}OrderByInput[];\n  take?: number;\n  skip?: number;\n  include?: ${model.name}Include;\n}\n`;
+  }
+
+  private generateInclude(model: Model): string {
+    const modelNames = getModelNames(this.schema);
+    const relationFields = model.fields.filter((field) => modelNames.has(field.type.name));
+
+    if (relationFields.length === 0) {
+      return `export interface ${model.name}Include {}\n`;
+    }
+
+    const lines = relationFields.map(
+      (field) => `  ${field.name}?: boolean | ${field.type.name}IncludeArgs;`,
+    );
+
+    return `export interface ${model.name}Include {\n${lines.join('\n')}\n}\n`;
   }
 
   private toTsType(field: Field, mode: 'entity' | 'input'): string {

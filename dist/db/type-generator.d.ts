@@ -10,6 +10,8 @@ export declare class TypeGenerator {
     private generateUpdateInput;
     private generateWhereInput;
     private generateOrderByInput;
+    private generateIncludeArgs;
+    private generateInclude;
     private toTsType;
     private mapTypeExpr;
     private isFilterable;

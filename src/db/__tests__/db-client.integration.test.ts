@@ -233,6 +233,114 @@ describe('db client integration (Docker)', { concurrency: 1 }, () => {
     });
   });
 
+  describe('include eager-loading', () => {
+    it('findMany loads sibling relations without cartesian duplication', async () => {
+      const order = await db.order.create({
+        userId: users.admin.id,
+        totalAmount: '19.99',
+        items: { sku: 'book' },
+      });
+
+      await db.profile.create({
+        userId: users.admin.id,
+        bio: 'Admin profile',
+        avatar: 'avatar.png',
+        location: '(0,0)',
+      });
+
+      const found = await db.user.findMany({
+        where: { id: users.admin.id },
+        include: {
+          profile: true,
+          orders: true,
+        },
+      });
+
+      assert.equal(found.length, 1);
+      assert.equal(found[0]!.profile?.bio, 'Admin profile');
+      assert.equal(found[0]!.orders.length, 1);
+      assert.equal(found[0]!.orders[0]!.id, order.id);
+    });
+
+    it('findUnique loads nested relations three levels deep', async () => {
+      const includeUser = await db.user.create({
+        email: 'include-nested@b.com',
+        name: 'Include Nested',
+        balance: 0,
+      });
+
+      const order = await db.order.create({
+        userId: includeUser.id,
+        totalAmount: '49.99',
+        items: { sku: 'bundle' },
+      });
+
+      const product = await db.product.create({
+        name: 'Widget',
+        description: 'A widget',
+        price: '9.99',
+        stock: 10,
+        category: 'tools',
+        tags: ['new'],
+        metadata: { color: 'blue' },
+      });
+
+      await db.productOrder.create({
+        orderId: order.id,
+        productId: product.id,
+        quantity: 2,
+        price: '9.99',
+      });
+
+      const found = await db.user.findUnique(
+        { id: includeUser.id },
+        {
+          include: {
+            orders: {
+              include: {
+                products: {
+                  include: {
+                    product: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      );
+
+      assert.ok(found);
+      assert.equal(found.orders.length, 1);
+      assert.equal(found.orders[0]!.products.length, 1);
+      assert.equal(found.orders[0]!.products[0]!.product.name, 'Widget');
+    });
+
+    it('findFirst supports include on SELECT path', async () => {
+      const found = await db.user.findFirst({
+        where: { email: 'admin@b.com' },
+        include: { orders: true },
+      });
+
+      assert.ok(found);
+      assert.ok(Array.isArray(found.orders));
+    });
+
+    it('findMany supports relationLoadStrategy join via json aggregation', async () => {
+      const found = await db.user.findMany({
+        where: { id: users.admin.id },
+        include: {
+          profile: true,
+          orders: true,
+        },
+        relationLoadStrategy: 'join',
+      });
+
+      assert.equal(found.length, 1);
+      assert.equal(found[0]!.profile?.bio, 'Admin profile');
+      assert.equal(found[0]!.orders.length, 1);
+    });
+  });
+
   describe('multi-model smoke', () => {
     it('creates, counts, and deleteMany on Log model', async () => {
       await db.log.create({ message: 'integration test' });
